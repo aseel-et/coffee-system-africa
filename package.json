@@ -1,0 +1,53 @@
+{
+  "name": "africa-university-cafeteria-desktop",
+  "version": "1.0.0",
+  "description": "Africa University Cafeteria POS Desktop App",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build-frontend": "cd frontend && npm run build",
+    "pack": "npm run build-frontend && electron-builder --dir",
+    "dist": "npm run build-frontend && electron-builder -w"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^29.1.5",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.aucafeteria.pos",
+    "productName": "AUC-Cafeteria",
+    "directories": {
+      "output": "dist-desktop"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "package.json"
+    ],
+    "asar": false,
+    "extraResources": [
+      {
+        "from": "backend",
+        "to": "backend",
+        "filter": [
+          "**/*",
+          "!node_modules/.cache"
+        ]
+      },
+      {
+        "from": "frontend/dist",
+        "to": "frontend/dist"
+      }
+    ]
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.5.0"
+  }
+}
