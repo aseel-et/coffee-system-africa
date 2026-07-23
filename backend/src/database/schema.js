@@ -1,8 +1,8 @@
 const db = require('./connection');
 const { createAccountTables } = require('./accountsSchema');
 
-function createTables() {
-  db.exec(`
+async function createTables() {
+  await db.exec(`
     -- Settings table
     CREATE TABLE IF NOT EXISTS settings (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -292,30 +292,22 @@ function createTables() {
 
   // AUTO-SEED ARABIC DATA IF EMPTY
   try {
-    const catCount = db.prepare("SELECT COUNT(*) as count FROM categories").get().count;
+    const catRow = await db.prepare("SELECT COUNT(*) as count FROM categories").get();
+    const catCount = catRow ? (catRow.count || catRow.c || 0) : 0;
     if (catCount === 0) {
       console.log('🌱 Empty menu detected. Force seeding Arabic cafeteria data...');
       const bcrypt = require('bcryptjs');
       const adminHash = bcrypt.hashSync('admin123', 10);
       
-      db.transaction(() => {
-        // Users
-        db.prepare("INSERT INTO users (username, full_name, password_hash, role) VALUES (?, ?, ?, ?)").run('admin', 'مدير النظام', adminHash, 'admin');
-        
-        // Settings
-        db.prepare("INSERT INTO settings (key, value) VALUES ('store_name', 'كافيتيريا جامعة أفريقيا')").run();
-        
-        // Categories
-        const catHot = db.prepare("INSERT INTO categories (name, name_ar, color, icon) VALUES ('Hot Drinks', 'مشروبات ساخنة', '#92400e', 'coffee')").run().lastInsertRowid;
-        const catFood = db.prepare("INSERT INTO categories (name, name_ar, color, icon) VALUES ('Meals', 'وجبات وساندوتشات', '#b45309', 'utensils')").run().lastInsertRowid;
-        
-        // Products
-        db.prepare("INSERT INTO products (name, name_ar, category_id, selling_price, cost_price, product_type) VALUES ('Tea', 'شاي أحمر لبتون', ?, 2.5, 0.5, 'non_stock')").run(catHot);
-        db.prepare("INSERT INTO products (name, name_ar, category_id, selling_price, cost_price, product_type) VALUES ('Shawarma', 'شاورما دجاج ممتازة', ?, 15.0, 8.0, 'non_stock')").run(catFood);
-        
-        // Customers
-        db.prepare("INSERT INTO customers (name, phone, balance) VALUES ('أحمد علي المرجبي', '0910001122', -50.0)").run();
-      })();
+      await db.prepare("INSERT INTO users (username, full_name, password_hash, role) VALUES (?, ?, ?, ?)").run('admin', 'مدير النظام', adminHash, 'admin');
+      await db.prepare("INSERT INTO settings (key, value) VALUES ('store_name', 'كافيتيريا جامعة أفريقيا')").run();
+      
+      const catHot = (await db.prepare("INSERT INTO categories (name, name_ar, color, icon) VALUES ('Hot Drinks', 'مشروبات ساخنة', '#92400e', 'coffee')").run()).lastInsertRowid;
+      const catFood = (await db.prepare("INSERT INTO categories (name, name_ar, color, icon) VALUES ('Meals', 'وجبات وساندوتشات', '#b45309', 'utensils')").run()).lastInsertRowid;
+      
+      await db.prepare("INSERT INTO products (name, name_ar, category_id, selling_price, cost_price, product_type) VALUES ('Tea', 'شاي أحمر لبتون', ?, 2.5, 0.5, 'non_stock')").run(catHot);
+      await db.prepare("INSERT INTO products (name, name_ar, category_id, selling_price, cost_price, product_type) VALUES ('Shawarma', 'شاورما دجاج ممتازة', ?, 15.0, 8.0, 'non_stock')").run(catFood);
+      await db.prepare("INSERT INTO customers (name, phone, balance) VALUES ('أحمد علي المرجبي', '0910001122', -50.0)").run();
       console.log('✅ Arabic cafeteria data seeded successfully!');
     }
   } catch (e) {
@@ -323,11 +315,13 @@ function createTables() {
   }
 
   // Automatic migrations for existing databases
-  try { db.prepare('ALTER TABLE sales ADD COLUMN customer_id INTEGER').run(); } catch(e) {}
-  try { db.prepare('ALTER TABLE sales ADD COLUMN debt_amount REAL DEFAULT 0').run(); } catch(e) {}
+  try { await db.prepare('ALTER TABLE sales ADD COLUMN customer_id INTEGER').run(); } catch(e) {}
+  try { await db.prepare('ALTER TABLE sales ADD COLUMN debt_amount REAL DEFAULT 0').run(); } catch(e) {}
 
   // Accounting tables + default chart of accounts (ERPNext-style)
-  createAccountTables();
+  await createAccountTables();
 }
+
+module.exports = { createTables };
 
 module.exports = { createTables };

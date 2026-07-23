@@ -1,8 +1,8 @@
 const db = require('./connection');
 
 // ── ERPNext-style accounting schema: Chart of Accounts + General Ledger ──
-function createAccountTables() {
-  db.exec(`
+async function createAccountTables() {
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS accounts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       code TEXT UNIQUE,
@@ -49,7 +49,7 @@ function createAccountTables() {
     );
   `);
 
-  seedChartOfAccounts();
+  await seedChartOfAccounts();
 }
 
 // Default Arabic chart of accounts for the cafeteria (ERPNext-style 5 roots).
@@ -94,20 +94,24 @@ const CHART = [
   ] },
 ];
 
-function seedChartOfAccounts() {
-  const count = db.prepare('SELECT COUNT(*) AS c FROM accounts').get().c;
+async function seedChartOfAccounts() {
+  const row = await db.prepare('SELECT COUNT(*) AS c FROM accounts').get();
+  const count = row ? (row.c || row.count || 0) : 0;
   if (count > 0) return;
 
   const insert = db.prepare(`INSERT INTO accounts (code, name, name_ar, parent_id, root_type, account_type, is_group)
                              VALUES (?, ?, ?, ?, ?, ?, ?)`);
-  const insertTree = (node, root, parentId) => {
-    const info = insert.run(node.code, node.name, node.ar, parentId, root, node.type || null, node.group ? 1 : 0);
+  const insertTree = async (node, root, parentId) => {
+    const info = await insert.run(node.code, node.name, node.ar, parentId, root, node.type || null, node.group ? 1 : 0);
     const id = info.lastInsertRowid;
-    (node.children || []).forEach(child => insertTree(child, root, id));
+    for (const child of (node.children || [])) {
+      await insertTree(child, root, id);
+    }
   };
-  db.transaction(() => {
-    CHART.forEach(node => insertTree(node, node.root, null));
-  })();
+  
+  for (const node of CHART) {
+    await insertTree(node, node.root, null);
+  }
   console.log('✅ Default chart of accounts seeded');
 }
 

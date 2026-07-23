@@ -30,25 +30,36 @@ const accountsRoutes = require('./routes/accounts');
 const accountingRoutes = require('./routes/accounting');
 
 // Initialize database
-createTables();
+(async () => {
+  try {
+    await createTables();
+  } catch (err) {
+    console.error('Database initialization warning:', err.message);
+  }
+})();
 
 // ── Hardware Binding (Anti-Theft Protection) ──
 const db = require('./database/connection');
-const currentMachineId = license.getMachineId();
-const binding = db.prepare('SELECT machine_id FROM system_binding WHERE id = 1').get();
+if (!db.isPg) {
+  try {
+    const currentMachineId = license.getMachineId();
+    const binding = db.prepare('SELECT machine_id FROM system_binding WHERE id = 1').get();
 
-if (!binding) {
-  // First time opening this database - lock it to this machine
-  db.prepare('INSERT INTO system_binding (machine_id) VALUES (?)').run(currentMachineId);
-  console.log('🔒 Database successfully bound to this hardware.');
-} else if (binding.machine_id !== currentMachineId) {
-  // Security Breach: Database was copied from another machine
-  console.error('\x1b[31m%s\x1b[0m', '🛑 [فشل أمني]اعدة البيانات هذه مرتبطة بجهاز كمبيوتر آخر ولا يمكن فتحها هنا.');
-  console.error('\x1b[33m%s\x1b[0m', 'Security Alert: Database hardware mismatch. Access Denied.');
-  
-  // We don't exit purely on the check to allow the server to show a helpful error, 
-  // but we can flag it to the middleware to block all requests.
-  process.env.DB_LOCKED = 'true';
+    if (!binding) {
+      // First time opening this database - lock it to this machine
+      db.prepare('INSERT INTO system_binding (machine_id) VALUES (?)').run(currentMachineId);
+      console.log('🔒 Database successfully bound to this hardware.');
+    } else if (binding.machine_id !== currentMachineId) {
+      // Security Breach: Database was copied from another machine
+      console.error('\x1b[31m%s\x1b[0m', '🛑 [فشل أمني] قاعدة البيانات هذه مرتبطة بجهاز كمبيوتر آخر ولا يمكن فتحها هنا.');
+      console.error('\x1b[33m%s\x1b[0m', 'Security Alert: Database hardware mismatch. Access Denied.');
+      process.env.DB_LOCKED = 'true';
+    }
+  } catch (e) {
+    console.warn('Hardware binding skipped:', e.message);
+  }
+} else {
+  console.log('🌐 Running in Cloud Mode (PostgreSQL). Hardware binding disabled.');
 }
 
 // Nuclear Clean Option (only when CLEAN_DB=true)
