@@ -6,7 +6,7 @@ const db = require('../database/connection');
 const { logActivity } = require('../utils/activityLogger');
 
 // POST /api/auth/login
-router.post('/login', (req, res) => {
+router.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
 
@@ -14,7 +14,7 @@ router.post('/login', (req, res) => {
       return res.status(400).json({ success: false, message: 'اسم المستخدم وكلمة المرور مطلوبان' });
     }
 
-    const user = db.prepare('SELECT * FROM users WHERE username = ? AND is_active = 1').get(username);
+    const user = await db.prepare('SELECT * FROM users WHERE username = ? AND is_active = 1').get(username);
     
     if (!user) {
       return res.status(401).json({ success: false, message: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
@@ -26,7 +26,7 @@ router.post('/login', (req, res) => {
     }
 
     // Update last login
-    db.prepare('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?').run(user.id);
+    await db.prepare('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?').run(user.id);
 
     const token = jwt.sign(
       { userId: user.id, role: user.role },
@@ -61,8 +61,8 @@ router.post('/logout', (req, res) => {
 });
 
 // GET /api/auth/me
-router.get('/me', require('../middleware/auth').authenticateToken, (req, res) => {
-  const user = db.prepare('SELECT id, username, full_name, role, last_login, created_at FROM users WHERE id = ?').get(req.user.id);
+router.get('/me', require('../middleware/auth').authenticateToken, async (req, res) => {
+  const user = await db.prepare('SELECT id, username, full_name, role, last_login, created_at FROM users WHERE id = ?').get(req.user.id);
   res.json({ success: true, data: user });
 });
 

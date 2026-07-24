@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const db = require('../database/connection');
 
-const authenticateToken = (req, res, next) => {
+const authenticateToken = async (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
@@ -11,7 +11,7 @@ const authenticateToken = (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = db.prepare('SELECT id, username, full_name, role, is_active FROM users WHERE id = ?').get(decoded.userId);
+    const user = await db.prepare('SELECT id, username, full_name, role, is_active FROM users WHERE id = ?').get(decoded.userId);
     
     if (!user) {
       return res.status(401).json({ success: false, message: 'المستخدم غير موجود' });
