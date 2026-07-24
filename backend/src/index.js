@@ -2,8 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
-const path = require('path');
-
+const db = require('./database/connection');
 const { createTables } = require('./database/schema');
 const { errorHandler, notFound } = require('./middleware/errorHandler');
 const license = require('./license');
@@ -82,11 +81,19 @@ if (!db.isPg) {
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware - Allow CORS for Render and production domains
-app.use(cors({
-  origin: true,
-  credentials: true
-}));
+// Custom CORS middleware for complete production compatibility
+app.use((req, res, next) => {
+  const origin = req.headers.origin || '*';
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  next();
+});
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 if (process.env.NODE_ENV !== 'test') {
