@@ -300,7 +300,7 @@ async function createTables() {
       const adminHash = bcrypt.hashSync('admin123', 10);
       
       await db.prepare("INSERT INTO users (username, full_name, password_hash, role) VALUES (?, ?, ?, ?)").run('admin', 'مدير النظام', adminHash, 'admin');
-      await db.prepare("INSERT INTO settings (key, value) VALUES ('store_name', 'كافيتيريا جامعة أفريقيا')").run();
+      await db.prepare("INSERT INTO settings (key, value) VALUES ('store_name', 'كافي صفقة')").run();
       
       const catHot = (await db.prepare("INSERT INTO categories (name, name_ar, color, icon) VALUES ('Hot Drinks', 'مشروبات ساخنة', '#92400e', 'coffee')").run()).lastInsertRowid;
       const catFood = (await db.prepare("INSERT INTO categories (name, name_ar, color, icon) VALUES ('Meals', 'وجبات وساندوتشات', '#b45309', 'utensils')").run()).lastInsertRowid;
@@ -314,9 +314,12 @@ async function createTables() {
     console.error('⚠️ Auto-seed warning:', e.message);
   }
 
-  // Automatic migrations for existing databases
-  try { await db.prepare('ALTER TABLE sales ADD COLUMN customer_id INTEGER').run(); } catch(e) {}
-  try { await db.prepare('ALTER TABLE sales ADD COLUMN debt_amount REAL DEFAULT 0').run(); } catch(e) {}
+  // Automatic store name update
+  try {
+    await db.prepare("INSERT INTO settings (key, value) VALUES ('store_name', 'كافي صفقة') ON CONFLICT (key) DO UPDATE SET value = 'كافي صفقة'").run();
+  } catch(e) {
+    try { await db.prepare("UPDATE settings SET value = 'كافي صفقة' WHERE key = 'store_name'").run(); } catch(err) {}
+  }
 
   // Accounting tables + default chart of accounts (ERPNext-style)
   await createAccountTables();

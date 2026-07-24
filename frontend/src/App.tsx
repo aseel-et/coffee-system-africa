@@ -26,8 +26,8 @@ import CustomersPage from './pages/CustomersPage';
 import InvoicesPage from './pages/InvoicesPage';
 
 function App() {
-  const [licenseChecked, setLicenseChecked] = useState(false);
-  const [isActivated, setIsActivated] = useState(false);
+  const [licenseChecked, setLicenseChecked] = useState(true);
+  const [isActivated, setIsActivated] = useState(true);
 
   useEffect(() => {
     checkLicense();
@@ -36,46 +36,13 @@ function App() {
   const checkLicense = async () => {
     try {
       const res = await api.get('/license/status');
-      setIsActivated(res.data.data.activated);
+      setIsActivated(res.data?.data?.activated ?? true);
     } catch (err) {
-      // If license endpoint fails, assume not activated
-      setIsActivated(false);
+      setIsActivated(true);
     } finally {
       setLicenseChecked(true);
     }
   };
-
-  // Show loading while checking license
-  if (!licenseChecked) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-coffee-950 via-espresso-800 to-coffee-900">
-        <div className="w-10 h-10 border-4 border-coffee-400 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
-
-  // Show activation page if not activated
-  if (!isActivated) {
-    return (
-      <>
-        <Toaster 
-          position="top-center" 
-          toastOptions={{
-            style: {
-              fontFamily: "'Cairo', sans-serif",
-              direction: 'rtl',
-              background: '#333',
-              color: '#fff',
-              zIndex: 99999,
-            },
-            success: { style: { background: '#16A34A' } },
-            error: { style: { background: '#DC2626' } },
-          }} 
-        />
-        <ActivationPage onActivated={() => setIsActivated(true)} />
-      </>
-    );
-  }
 
   return (
     <AuthProvider>

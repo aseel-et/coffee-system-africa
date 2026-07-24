@@ -63,8 +63,8 @@ const Sidebar: React.FC = () => {
                 transition={{ duration: 0.2 }}
                 className="overflow-hidden flex-1"
               >
-                <h1 className="font-bold text-stone-900 text-sm leading-tight whitespace-nowrap">كافيتيريا</h1>
-                <p className="text-xs text-stone-400 whitespace-nowrap">جامعة أفريقيا</p>
+                <h1 className="font-bold text-stone-900 text-sm leading-tight whitespace-nowrap">كافي صفقة</h1>
+                <p className="text-xs text-stone-400 whitespace-nowrap">Safqa Coffee</p>
               </motion.div>
             )}
           </AnimatePresence>

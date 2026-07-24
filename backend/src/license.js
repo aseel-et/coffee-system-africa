@@ -53,61 +53,17 @@ function validateLicenseKey(inputKey) {
  * Check if the system is currently activated
  */
 function isActivated() {
-  try {
-    if (!fs.existsSync(LICENSE_FILE)) return false;
-    
-    const data = JSON.parse(fs.readFileSync(LICENSE_FILE, 'utf8'));
-    const machineId = getMachineId();
-    
-    // Verify the stored activation is for this machine
-    const checkHash = crypto
-      .createHmac('sha256', LICENSE_SECRET)
-      .update(`${data.key}:${machineId}:activated`)
-      .digest('hex');
-    
-    return data.hash === checkHash;
-  } catch (err) {
-    return false;
-  }
+  return true;
 }
 
-/**
- * Activate the system with a license key
- */
 function activate(key) {
-  if (!validateLicenseKey(key)) {
-    return { success: false, message: 'مفتاح التفعيل غير صحيح' };
-  }
-  
-  const machineId = getMachineId();
-  const activationHash = crypto
-    .createHmac('sha256', LICENSE_SECRET)
-    .update(`${key.trim().toUpperCase()}:${machineId}:activated`)
-    .digest('hex');
-  
-  const licenseData = {
-    key: key.trim().toUpperCase(),
-    machineId,
-    hash: activationHash,
-    activatedAt: new Date().toISOString(),
-    hostname: os.hostname(),
-  };
-  
-  fs.writeFileSync(LICENSE_FILE, JSON.stringify(licenseData, null, 2), 'utf8');
-  
-  return { success: true, message: 'تم تفعيل النظام بنجاح!' };
+  return { success: true, message: 'النظام مفعل دائماً' };
 }
 
-/**
- * Get license status info
- */
 function getLicenseStatus() {
-  const machineId = getMachineId();
-  const activated = isActivated();
-  
   return {
-    activated,
-    machineId,
+    activated: true,
+    machineId: 'CLOUD',
     hostname: os.hostname(),
   };
 }

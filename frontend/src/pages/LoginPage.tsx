@@ -58,9 +58,9 @@ const LoginPage: React.FC = () => {
           >
             <Coffee className="w-10 h-10 text-white" />
           </motion.div>
-          <h1 className="text-3xl font-bold text-white mb-1">كافيتيريا</h1>
-          <p className="text-coffee-300 font-medium">جامعة أفريقيا</p>
-          <p className="text-stone-400 text-sm mt-1">Africa University Cafeteria</p>
+          <h1 className="text-3xl font-bold text-white mb-1">كافي صفقة</h1>
+          <p className="text-coffee-300 font-medium">Safqa Coffee System</p>
+          <p className="text-stone-400 text-sm mt-1">نظام إدارة المبيعات والكافيه</p>
         </div>
 
         {/* Login Card */}

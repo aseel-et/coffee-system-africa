@@ -20,8 +20,8 @@ const ReceiptPrint: React.FC<ReceiptPrintProps> = ({ sale, cashierName }) => {
     <div className="print-receipt bg-white text-black font-arabic dir-rtl" style={{ direction: 'rtl', color: '#000', width: '270px', paddingRight: '5px', paddingLeft: '35px' }}>
       {/* Header with logo-like text */}
       <div className="text-center mb-4">
-        <h1 className="text-xl font-black mb-1 leading-none" style={{ color: '#000' }}>كافيتيريا جامعة أفريقيا</h1>
-        <p className="text-[9px] font-bold tracking-widest uppercase opacity-80" style={{ color: '#000' }}>Africa University Cafeteria</p>
+        <h1 className="text-xl font-black mb-1 leading-none" style={{ color: '#000' }}>كافي صفقة</h1>
+        <p className="text-[9px] font-bold tracking-widest uppercase opacity-80" style={{ color: '#000' }}>Safqa Coffee System</p>
         <div className="flex items-center justify-center gap-2 mt-4">
           <div className="h-[1px] bg-black/30 flex-1"></div>
           <span className="text-[9px] font-bold px-2 py-0.5 border border-black/30 rounded uppercase">فاتورة مبيعات</span>

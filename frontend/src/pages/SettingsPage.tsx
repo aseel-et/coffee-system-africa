@@ -33,7 +33,7 @@ const SettingsPage: React.FC = () => {
       const settingsObj = res.data.data;
       setSettings(settingsObj);
       setFormData({
-        store_name: settingsObj['store_name'] || 'كافيتيريا جامعة أفريقيا',
+        store_name: settingsObj['store_name'] || 'كافي صفقة',
         store_phone: settingsObj['store_phone'] || '',
         tax_rate: settingsObj['tax_rate'] || '0',
         receipt_footer: settingsObj['receipt_footer'] || 'شكراً لزيارتكم',
