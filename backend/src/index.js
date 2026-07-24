@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
+const path = require('path');
 const db = require('./database/connection');
 const { createTables } = require('./database/schema');
 const { errorHandler, notFound } = require('./middleware/errorHandler');
