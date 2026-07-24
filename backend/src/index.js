@@ -33,13 +33,30 @@ const accountingRoutes = require('./routes/accounting');
 (async () => {
   try {
     await createTables();
+
+    // Ensure default Admin exists
+    try {
+      const adminRow = await db.prepare('SELECT COUNT(*) as count FROM users WHERE role = ?').get('admin');
+      const adminCount = Number(adminRow?.count || adminRow?.c || 0);
+      if (adminCount === 0) {
+        const bcrypt = require('bcryptjs');
+        const adminHash = bcrypt.hashSync('admin123', 10);
+        const cashierHash = bcrypt.hashSync('cashier123', 10);
+        
+        await db.prepare('INSERT INTO users (username, full_name, password_hash, role) VALUES (?, ?, ?, ?)').run('admin', 'مدير النظام', adminHash, 'admin');
+        await db.prepare('INSERT INTO users (username, full_name, password_hash, role) VALUES (?, ?, ?, ?)').run('cashier', 'موظف مبيعات', cashierHash, 'cashier');
+        
+        console.log('✅ Default users created (admin / admin123) and (cashier / cashier123)');
+      }
+    } catch (e) {
+      console.error('Admin check error:', e.message);
+    }
   } catch (err) {
     console.error('Database initialization warning:', err.message);
   }
 })();
 
 // ── Hardware Binding (Anti-Theft Protection) ──
-const db = require('./database/connection');
 if (!db.isPg) {
   try {
     const currentMachineId = license.getMachineId();
@@ -62,37 +79,12 @@ if (!db.isPg) {
   console.log('🌐 Running in Cloud Mode (PostgreSQL). Hardware binding disabled.');
 }
 
-// Nuclear Clean Option (only when CLEAN_DB=true)
-if (process.env.CLEAN_DB === 'true') {
-  const connection = require('./database/connection');
-  const tables = ['sales', 'sale_items', 'stock_movements', 'customer_transactions', 'purchases', 'purchase_items', 'expenses', 'shifts', 'products', 'categories', 'customers', 'suppliers'];
-  connection.transaction(() => {
-    tables.forEach(t => {
-      try { connection.prepare(`DELETE FROM ${t}`).run(); } catch(e) {}
-    });
-  })();
-  console.log('🧹 Database Cleaned Successfully');
-}
-
-// Ensure default Admin exists (vital for a packaged application)
-const adminCount = db.prepare('SELECT COUNT(*) as count FROM users WHERE role = ?').get('admin').count;
-if (adminCount === 0) {
-  const bcrypt = require('bcryptjs');
-  const adminHash = bcrypt.hashSync('admin123', 10);
-  const cashierHash = bcrypt.hashSync('cashier123', 10);
-  
-  db.prepare('INSERT INTO users (username, full_name, password_hash, role) VALUES (?, ?, ?, ?)').run('admin', 'مدير النظام', adminHash, 'admin');
-  db.prepare('INSERT INTO users (username, full_name, password_hash, role) VALUES (?, ?, ?, ?)').run('cashier', 'موظف مبيعات', cashierHash, 'cashier');
-  
-  console.log('✅ Default users created (admin / admin123) and (cashier / cashier123)');
-}
-
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware
+// Middleware - Allow CORS for Render and production domains
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173'],
+  origin: true,
   credentials: true
 }));
 app.use(express.json({ limit: '10mb' }));
