@@ -81,9 +81,13 @@ if (!db.isPg) {
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Universal CORS handler for all origins and preflight requests
-app.use(cors());
-app.options('*', cors());
+// Universal CORS handler allowing any dynamic origin with credentials
+app.use(cors({
+  origin: function (origin, callback) {
+    return callback(null, origin || '*');
+  },
+  credentials: true
+}));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 if (process.env.NODE_ENV !== 'test') {
