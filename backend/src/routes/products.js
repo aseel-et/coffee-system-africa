@@ -5,7 +5,7 @@ const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const { logActivity } = require('../utils/activityLogger');
 
 // GET /api/products
-router.get('/', authenticateToken, (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
   try {
     const { category_id, product_type, is_active, show_in_pos, search, low_stock } = req.query;
     let query = `
@@ -26,7 +26,7 @@ router.get('/', authenticateToken, (req, res) => {
     if (conditions.length) query += ' WHERE ' + conditions.join(' AND ');
     query += ' ORDER BY p.name ASC';
     
-    const products = db.prepare(query).all(...params);
+    const products = await db.prepare(query).all(...params);
     res.json({ success: true, data: products });
   } catch (err) {
     console.error(err);
@@ -35,9 +35,9 @@ router.get('/', authenticateToken, (req, res) => {
 });
 
 // GET /api/products/:id
-router.get('/:id', authenticateToken, (req, res) => {
+router.get('/:id', authenticateToken, async (req, res) => {
   try {
-    const product = db.prepare(`
+    const product = await db.prepare(`
       SELECT p.*, c.name as category_name
       FROM products p LEFT JOIN categories c ON c.id = p.category_id
       WHERE p.id = ?
@@ -50,7 +50,7 @@ router.get('/:id', authenticateToken, (req, res) => {
 });
 
 // POST /api/products
-router.post('/', authenticateToken, requireAdmin, (req, res) => {
+router.post('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { name, name_ar, sku, category_id, selling_price, cost_price, product_type,
             is_active, show_in_pos, current_stock, min_stock_alert, unit, image_url } = req.body;
@@ -59,7 +59,7 @@ router.post('/', authenticateToken, requireAdmin, (req, res) => {
       return res.status(400).json({ success: false, message: 'اسم المنتج والسعر مطلوبان' });
     }
 
-    const result = db.prepare(`
+    const result = await db.prepare(`
       INSERT INTO products (name, name_ar, sku, category_id, selling_price, cost_price, product_type,
         is_active, show_in_pos, current_stock, min_stock_alert, unit, image_url)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -77,7 +77,7 @@ router.post('/', authenticateToken, requireAdmin, (req, res) => {
 
     // If stock_tracked with initial stock, create stock movement
     if (product_type === 'stock_tracked' && parseFloat(current_stock) > 0) {
-      db.prepare(`
+      await db.prepare(`
         INSERT INTO stock_movements (product_id, movement_type, quantity, quantity_before, quantity_after, reason, user_id)
         VALUES (?, 'adjustment_in', ?, 0, ?, 'رصيد افتتاحي', ?)
       `).run(result.lastInsertRowid, parseFloat(current_stock), parseFloat(current_stock), req.user.id);
@@ -85,7 +85,7 @@ router.post('/', authenticateToken, requireAdmin, (req, res) => {
 
     logActivity(req.user.id, req.user.full_name, 'create', 'products', `إضافة منتج: ${name}`, 'product', result.lastInsertRowid);
     
-    const product = db.prepare(`
+    const product = await db.prepare(`
       SELECT p.*, c.name as category_name FROM products p
       LEFT JOIN categories c ON c.id = p.category_id WHERE p.id = ?
     `).get(result.lastInsertRowid);
@@ -97,16 +97,16 @@ router.post('/', authenticateToken, requireAdmin, (req, res) => {
 });
 
 // PUT /api/products/:id
-router.put('/:id', authenticateToken, requireAdmin, (req, res) => {
+router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const productId = parseInt(req.params.id);
-    const product = db.prepare('SELECT * FROM products WHERE id = ?').get(productId);
+    const product = await db.prepare('SELECT * FROM products WHERE id = ?').get(productId);
     if (!product) return res.status(404).json({ success: false, message: 'المنتج غير موجود' });
 
     const { name, name_ar, sku, category_id, selling_price, cost_price, product_type,
             is_active, show_in_pos, min_stock_alert, unit, image_url } = req.body;
 
-    db.prepare(`
+    await db.prepare(`
       UPDATE products SET name=?, name_ar=?, sku=?, category_id=?, selling_price=?, cost_price=?,
         product_type=?, is_active=?, show_in_pos=?, min_stock_alert=?, unit=?, image_url=?, updated_at=CURRENT_TIMESTAMP
       WHERE id = ?
@@ -126,7 +126,7 @@ router.put('/:id', authenticateToken, requireAdmin, (req, res) => {
 
     logActivity(req.user.id, req.user.full_name, 'update', 'products', `تعديل منتج: ${name || product.name}`, 'product', productId);
     
-    const updated = db.prepare(`
+    const updated = await db.prepare(`
       SELECT p.*, c.name as category_name FROM products p
       LEFT JOIN categories c ON c.id = p.category_id WHERE p.id = ?
     `).get(productId);
@@ -138,13 +138,13 @@ router.put('/:id', authenticateToken, requireAdmin, (req, res) => {
 });
 
 // DELETE /api/products/:id
-router.delete('/:id', authenticateToken, requireAdmin, (req, res) => {
+router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const productId = parseInt(req.params.id);
-    const product = db.prepare('SELECT * FROM products WHERE id = ?').get(productId);
+    const product = await db.prepare('SELECT * FROM products WHERE id = ?').get(productId);
     if (!product) return res.status(404).json({ success: false, message: 'المنتج غير موجود' });
 
-    const salesCount = db.prepare('SELECT COUNT(*) as count FROM sale_items WHERE product_id = ?').get(productId);
+    const salesCount = await db.prepare('SELECT COUNT(*) as count FROM sale_items WHERE product_id = ?').get(productId);
     if (salesCount.count > 0) {
       return res.status(409).json({ 
         success: false, 
@@ -152,7 +152,7 @@ router.delete('/:id', authenticateToken, requireAdmin, (req, res) => {
       });
     }
 
-    db.prepare('DELETE FROM products WHERE id = ?').run(productId);
+    await db.prepare('DELETE FROM products WHERE id = ?').run(productId);
     logActivity(req.user.id, req.user.full_name, 'delete', 'products', `حذف منتج: ${product.name}`, 'product', productId);
     res.json({ success: true, message: 'تم حذف المنتج بنجاح' });
   } catch (err) {

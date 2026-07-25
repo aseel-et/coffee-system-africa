@@ -5,9 +5,9 @@ const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const { logActivity } = require('../utils/activityLogger');
 
 // GET /api/sales/debug-test (Public to verify update)
-router.get('/debug-test', (req, res) => {
+router.get('/debug-test', async (req, res) => {
   try {
-    const tableInfo = db.prepare("PRAGMA table_info(sales)").all();
+    const tableInfo = await db.prepare("PRAGMA table_info(sales)").all();
     res.json({ success: true, status: 'OK_NEW_VERSION', table: tableInfo });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -15,12 +15,12 @@ router.get('/debug-test', (req, res) => {
 });
 
 // GET /api/sales/fix-db (Public for rescue)
-router.get('/fix-db', (req, res) => {
+router.get('/fix-db', async (req, res) => {
   try {
     const msgs = [];
-    db.exec(`DROP TABLE IF EXISTS sales_backup`);
-    try { db.prepare('ALTER TABLE sales RENAME TO sales_backup').run(); msgs.push('Renamed sales to sales_backup'); } catch(e) {}
-    db.exec(`
+    await db.exec(`DROP TABLE IF EXISTS sales_backup`);
+    try { await db.prepare('ALTER TABLE sales RENAME TO sales_backup').run(); msgs.push('Renamed sales to sales_backup'); } catch(e) {}
+    await db.exec(`
       CREATE TABLE IF NOT EXISTS sales (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         invoice_number TEXT NOT NULL UNIQUE,
@@ -49,11 +49,11 @@ router.get('/fix-db', (req, res) => {
 });
 
 // GET /api/sales - List sales with filters
-router.get('/', (req, res, next) => {
+router.get('/', async (req, res, next) => {
   // Simple session check without crashing
   if (!req.headers['authorization']) return res.status(401).json({ success: false, message: 'لا يوجد رمز مصادقة' });
   authenticateToken(req, res, next);
-}, (req, res) => {
+}, async (req, res) => {
   try {
     const { from_date, to_date, cashier_id, payment_method, status, limit = 50, offset = 0 } = req.query;
     
@@ -81,12 +81,12 @@ router.get('/', (req, res, next) => {
     
     // Get total count
     const countQuery = query.replace('SELECT s.*, u.full_name as cashier_name', 'SELECT COUNT(*) as total');
-    const totalResult = db.prepare(countQuery).get(...params);
+    const totalResult = await db.prepare(countQuery).get(...params);
     
     query += ' ORDER BY s.created_at DESC LIMIT ? OFFSET ?';
     params.push(parseInt(limit), parseInt(offset));
     
-    const salesRaw = db.prepare(query).all(...params);
+    const salesRaw = await db.prepare(query).all(...params);
     const sales = salesRaw.map(s => {
       if (s.debt_amount > 0 && s.cash_amount === 0 && s.card_amount === 0) s.payment_method = 'debt';
       return s;
@@ -100,9 +100,9 @@ router.get('/', (req, res, next) => {
 });
 
 // GET /api/sales/:id - Get sale with items
-router.get('/:id', authenticateToken, (req, res) => {
+router.get('/:id', authenticateToken, async (req, res) => {
   try {
-    const sale = db.prepare(`
+    const sale = await db.prepare(`
       SELECT s.*, u.full_name as cashier_name
       FROM sales s LEFT JOIN users u ON u.id = s.cashier_id
       WHERE s.id = ?
@@ -110,7 +110,7 @@ router.get('/:id', authenticateToken, (req, res) => {
     
     if (!sale) return res.status(404).json({ success: false, message: 'الفاتورة غير موجودة' });
     
-    const items = db.prepare(`
+    const items = await db.prepare(`
       SELECT si.*, p.image_url
       FROM sale_items si
       LEFT JOIN products p ON p.id = si.product_id
@@ -126,7 +126,7 @@ router.get('/:id', authenticateToken, (req, res) => {
 });
 
 // POST /api/sales - Create new sale
-router.post('/', authenticateToken, (req, res) => {
+router.post('/', authenticateToken, async (req, res) => {
   try {
     const { items, payment_method, customer_id, discount_amount, discount_percent, notes, cash_amount, card_amount, debt_amount } = req.body;
     
@@ -138,7 +138,7 @@ router.post('/', authenticateToken, (req, res) => {
     
     try {
       // 1. Generate invoice number (Moved inside for safety)
-      const lastSale = db.prepare('SELECT invoice_number FROM sales ORDER BY id DESC LIMIT 1').get();
+      const lastSale = await db.prepare('SELECT invoice_number FROM sales ORDER BY id DESC LIMIT 1').get();
       let nextNum = 1;
       if (lastSale) {
         const lastNum = parseInt(lastSale.invoice_number.replace('INV-', ''));
@@ -155,7 +155,7 @@ router.post('/', authenticateToken, (req, res) => {
     const enrichedItems = [];
 
     for (const item of items) {
-      const product = db.prepare('SELECT * FROM products WHERE id = ? AND is_active = 1').get(item.product_id);
+      const product = await db.prepare('SELECT * FROM products WHERE id = ? AND is_active = 1').get(item.product_id);
       if (!product) {
         return res.status(400).json({ success: false, message: `المنتج غير موجود: ${item.product_id}` });
       }
@@ -185,11 +185,11 @@ router.post('/', authenticateToken, (req, res) => {
     const total = Math.max(0, subtotal - discAmt);
 
     // Execute within transaction
-    const createSale = db.transaction(() => {
+    const createSale = await db.transaction(() => {
       const dbPaymentMethod = payment_method === 'debt' ? 'mixed' : (payment_method || 'cash');
 
       // Create sale record
-      const saleResult = db.prepare(`
+      const saleResult = await db.prepare(`
         INSERT INTO sales (invoice_number, cashier_id, customer_id, payment_method, subtotal, discount_amount, discount_percent, total, cash_amount, card_amount, debt_amount, notes)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
@@ -204,12 +204,12 @@ router.post('/', authenticateToken, (req, res) => {
       // Update customer balance if debt
       const actualDebtAmount = parseFloat(debt_amount) || 0;
       if (actualDebtAmount > 0 && customer_id) {
-        const customer = db.prepare('SELECT balance FROM customers WHERE id = ?').get(customer_id);
+        const customer = await db.prepare('SELECT balance FROM customers WHERE id = ?').get(customer_id);
         if (customer) {
           const before = customer.balance;
           const after = before - actualDebtAmount; // Debt is negative balance
-          db.prepare('UPDATE customers SET balance = ? WHERE id = ?').run(after, customer_id);
-          db.prepare(`
+          await db.prepare('UPDATE customers SET balance = ? WHERE id = ?').run(after, customer_id);
+          await db.prepare(`
             INSERT INTO customer_transactions (customer_id, transaction_type, amount, balance_before, balance_after, reference_type, reference_id, user_id, notes)
             VALUES (?, 'debt', ?, ?, ?, 'sale', ?, ?, ?)
           `).run(customer_id, actualDebtAmount, before, after, saleId, req.user.id, `فاتورة ${invoiceNumber}`);
@@ -218,7 +218,7 @@ router.post('/', authenticateToken, (req, res) => {
 
       // Create sale items & update stock
       for (const item of enrichedItems) {
-        db.prepare(`
+        await db.prepare(`
           INSERT INTO sale_items (sale_id, product_id, product_name, product_type, quantity, unit_price, cost_price, total)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `).run(saleId, item.product.id, item.product.name, item.product.product_type,
@@ -228,8 +228,8 @@ router.post('/', authenticateToken, (req, res) => {
         if (item.product.product_type === 'stock_tracked') {
           const before = item.product.current_stock;
           const after = before - item.quantity;
-          db.prepare('UPDATE products SET current_stock = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(after, item.product.id);
-          db.prepare(`
+          await db.prepare('UPDATE products SET current_stock = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(after, item.product.id);
+          await db.prepare(`
             INSERT INTO stock_movements (product_id, movement_type, quantity, quantity_before, quantity_after, reason, reference_type, reference_id, user_id)
             VALUES (?, 'sale', ?, ?, ?, ?, 'sale', ?, ?)
           `).run(item.product.id, item.quantity, before, after, `بيع - فاتورة ${invoiceNumber}`, saleId, req.user.id);
@@ -243,11 +243,11 @@ router.post('/', authenticateToken, (req, res) => {
     
     logActivity(req.user.id, req.user.full_name, 'create', 'sales', `إنشاء فاتورة بيع: ${invoiceNumber} - المبلغ: ${total}`, 'sale', saleId);
 
-    const sale = db.prepare(`
+    const sale = await db.prepare(`
       SELECT s.*, u.full_name as cashier_name FROM sales s
       LEFT JOIN users u ON u.id = s.cashier_id WHERE s.id = ?
     `).get(saleId);
-    const saleItems = db.prepare('SELECT * FROM sale_items WHERE sale_id = ?').all(saleId);
+    const saleItems = await db.prepare('SELECT * FROM sale_items WHERE sale_id = ?').all(saleId);
 
     res.status(201).json({ success: true, data: { ...sale, items: saleItems }, message: 'تم إنشاء الفاتورة بنجاح' });
   } catch (err) {
@@ -309,24 +309,24 @@ router.post('/', authenticateToken, (req, res) => {
 });
 
 // PATCH /api/sales/:id/void - Void a sale (All active users can void if allowed by business)
-router.patch('/:id/void', authenticateToken, (req, res) => {
+router.patch('/:id/void', authenticateToken, async (req, res) => {
   try {
     const saleId = parseInt(req.params.id);
-    const sale = db.prepare('SELECT * FROM sales WHERE id = ?').get(saleId);
+    const sale = await db.prepare('SELECT * FROM sales WHERE id = ?').get(saleId);
     if (!sale) return res.status(404).json({ success: false, message: 'الفاتورة غير موجودة' });
     if (sale.status !== 'completed') return res.status(400).json({ success: false, message: 'الفاتورة غير قابلة للإلغاء' });
 
-    const voidSale = db.transaction(() => {
-      db.prepare('UPDATE sales SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run('voided', saleId);
+    const voidSale = await db.transaction(() => {
+      await db.prepare('UPDATE sales SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run('voided', saleId);
       
       // Restore customer balance if it was a debt sale
       if (sale.debt_amount > 0 && sale.customer_id) {
-        const customer = db.prepare('SELECT balance FROM customers WHERE id = ?').get(sale.customer_id);
+        const customer = await db.prepare('SELECT balance FROM customers WHERE id = ?').get(sale.customer_id);
         if (customer) {
           const before = customer.balance;
           const after = before + sale.debt_amount; // Reversing the debt
-          db.prepare('UPDATE customers SET balance = ? WHERE id = ?').run(after, sale.customer_id);
-          db.prepare(`
+          await db.prepare('UPDATE customers SET balance = ? WHERE id = ?').run(after, sale.customer_id);
+          await db.prepare(`
             INSERT INTO customer_transactions (customer_id, transaction_type, amount, balance_before, balance_after, reference_type, reference_id, user_id, notes)
             VALUES (?, 'refund', ?, ?, ?, 'sale_void', ?, ?, ?)
           `).run(sale.customer_id, sale.debt_amount, before, after, saleId, req.user.id, `إلغاء فاتورة ${sale.invoice_number}`);
@@ -334,14 +334,14 @@ router.patch('/:id/void', authenticateToken, (req, res) => {
       }
 
       // Restore stock for tracked items
-      const items = db.prepare("SELECT * FROM sale_items WHERE sale_id = ? AND product_type = 'stock_tracked'").all(saleId);
+      const items = await db.prepare("SELECT * FROM sale_items WHERE sale_id = ? AND product_type = 'stock_tracked'").all(saleId);
       for (const item of items) {
-        const product = db.prepare('SELECT * FROM products WHERE id = ?').get(item.product_id);
+        const product = await db.prepare('SELECT * FROM products WHERE id = ?').get(item.product_id);
         if (product) {
           const before = product.current_stock;
           const after = before + item.quantity;
-          db.prepare('UPDATE products SET current_stock = ? WHERE id = ?').run(after, product.id);
-          db.prepare(`
+          await db.prepare('UPDATE products SET current_stock = ? WHERE id = ?').run(after, product.id);
+          await db.prepare(`
             INSERT INTO stock_movements (product_id, movement_type, quantity, quantity_before, quantity_after, reason, reference_type, reference_id, user_id)
             VALUES (?, 'return', ?, ?, ?, ?, 'sale_void', ?, ?)
           `).run(product.id, item.quantity, before, after, `إلغاء فاتورة: ${sale.invoice_number}`, saleId, req.user.id);

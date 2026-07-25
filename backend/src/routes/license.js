@@ -3,13 +3,13 @@ const router = express.Router();
 const license = require('../license');
 
 // GET /api/license/status
-router.get('/status', (req, res) => {
+router.get('/status', async (req, res) => {
   const status = license.getLicenseStatus();
   res.json({ success: true, data: status });
 });
 
 // POST /api/license/activate
-router.post('/activate', (req, res) => {
+router.post('/activate', async (req, res) => {
   try {
     const { key } = req.body;
     

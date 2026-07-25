@@ -28,7 +28,7 @@ const INSTRUCTIONS = [
 ];
 
 function stockRows() {
-  return db.prepare(`
+  return await db.prepare(`
     SELECT p.name, p.sku, p.unit, p.current_stock, p.min_stock_alert, c.name AS category_name
     FROM products p LEFT JOIN categories c ON c.id = p.category_id
     WHERE p.product_type = 'stock_tracked'
@@ -72,14 +72,14 @@ router.post('/import', authenticateToken, requireAdmin, async (req, res) => {
     const { rows, error } = await X.parseUpload(req.body.fileBase64, SHEET, COLUMNS);
     if (error) return res.status(400).json({ success: false, message: error });
 
-    const findBySku = db.prepare("SELECT * FROM products WHERE sku = ? AND sku <> '' AND product_type='stock_tracked' LIMIT 1");
-    const findByName = db.prepare("SELECT * FROM products WHERE name = ? AND product_type='stock_tracked' LIMIT 1");
-    const setStock = db.prepare('UPDATE products SET current_stock=?, min_stock_alert=?, updated_at=CURRENT_TIMESTAMP WHERE id=?');
-    const insMove = db.prepare(`INSERT INTO stock_movements (product_id, movement_type, quantity, quantity_before, quantity_after, reason, user_id)
+    const findBySku = await db.prepare("SELECT * FROM products WHERE sku = ? AND sku <> '' AND product_type='stock_tracked' LIMIT 1");
+    const findByName = await db.prepare("SELECT * FROM products WHERE name = ? AND product_type='stock_tracked' LIMIT 1");
+    const setStock = await db.prepare('UPDATE products SET current_stock=?, min_stock_alert=?, updated_at=CURRENT_TIMESTAMP WHERE id=?');
+    const insMove = await db.prepare(`INSERT INTO stock_movements (product_id, movement_type, quantity, quantity_before, quantity_after, reason, user_id)
                                 VALUES (?, ?, ?, ?, ?, 'تسوية جرد (استيراد Excel)', ?)`);
 
     const result = { updated: 0, adjusted: 0, skipped: 0, errors: [] };
-    const run = db.transaction(() => {
+    const run = await db.transaction(() => {
       for (const row of rows) {
         const name = row.name;
         if (!name) continue;

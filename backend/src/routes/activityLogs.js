@@ -4,7 +4,7 @@ const db = require('../database/connection');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 
 // GET /api/activity-logs
-router.get('/', authenticateToken, requireAdmin, (req, res) => {
+router.get('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { from_date, to_date, user_id, action_type, module, limit = 100, offset = 0 } = req.query;
     let query = 'SELECT * FROM activity_logs WHERE 1=1';
@@ -16,11 +16,11 @@ router.get('/', authenticateToken, requireAdmin, (req, res) => {
     if (action_type) { query += ' AND action_type = ?'; params.push(action_type); }
     if (module) { query += ' AND module = ?'; params.push(module); }
     
-    const countResult = db.prepare(query.replace('SELECT *', 'SELECT COUNT(*) as total')).get(...params);
+    const countResult = await db.prepare(query.replace('SELECT *', 'SELECT COUNT(*) as total')).get(...params);
     query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
     params.push(parseInt(limit), parseInt(offset));
     
-    const logs = db.prepare(query).all(...params);
+    const logs = await db.prepare(query).all(...params);
     res.json({ success: true, data: logs, total: countResult.total });
   } catch (err) {
     res.status(500).json({ success: false, message: 'خطأ في جلب سجل الأنشطة' });

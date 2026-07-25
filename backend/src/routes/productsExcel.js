@@ -29,7 +29,7 @@ const HEADER_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF8B5
 const HEADER_FONT = { bold: true, color: { argb: 'FFFFFFFF' }, size: 12 };
 
 function getCategories() {
-  return db.prepare('SELECT id, name, name_ar FROM categories WHERE is_active = 1 ORDER BY name').all();
+  return await db.prepare('SELECT id, name, name_ar FROM categories WHERE is_active = 1 ORDER BY name').all();
 }
 
 // Add a hidden helper sheet holding dropdown lists, return its name.
@@ -158,7 +158,7 @@ router.get('/template', authenticateToken, requireAdmin, async (req, res) => {
 // ── GET /api/products/export  (all current products) ──
 router.get('/export', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const products = db.prepare(`
+    const products = await db.prepare(`
       SELECT p.*, c.name AS category_name
       FROM products p LEFT JOIN categories c ON c.id = p.category_id
       ORDER BY c.name, p.name
@@ -209,11 +209,11 @@ router.post('/import', authenticateToken, requireAdmin, async (req, res) => {
     }
 
     // Lookup maps
-    const categories = db.prepare('SELECT id, name, name_ar FROM categories').all();
+    const categories = await db.prepare('SELECT id, name, name_ar FROM categories').all();
     const catMap = new Map();
     categories.forEach(c => { catMap.set((c.name || '').trim(), c.id); if (c.name_ar) catMap.set((c.name_ar || '').trim(), c.id); });
-    const findBySku = db.prepare('SELECT id, product_type FROM products WHERE sku = ? LIMIT 1');
-    const findByName = db.prepare('SELECT id, product_type FROM products WHERE name = ? LIMIT 1');
+    const findBySku = await db.prepare('SELECT id, product_type FROM products WHERE sku = ? LIMIT 1');
+    const findByName = await db.prepare('SELECT id, product_type FROM products WHERE name = ? LIMIT 1');
 
     const cellStr = (row, key) => {
       if (colIndex[key] === undefined) return '';
@@ -233,13 +233,13 @@ router.post('/import', authenticateToken, requireAdmin, async (req, res) => {
       return def;
     };
 
-    const insert = db.prepare(`
+    const insert = await db.prepare(`
       INSERT INTO products (name, name_ar, sku, category_id, selling_price, cost_price, product_type,
         is_active, show_in_pos, current_stock, min_stock_alert, unit)
       VALUES (@name, @name_ar, @sku, @category_id, @selling_price, @cost_price, @product_type,
         @is_active, @show_in_pos, @current_stock, @min_stock_alert, @unit)
     `);
-    const update = db.prepare(`
+    const update = await db.prepare(`
       UPDATE products SET name=@name, name_ar=@name_ar, sku=@sku, category_id=@category_id,
         selling_price=@selling_price, cost_price=@cost_price, product_type=@product_type,
         is_active=@is_active, show_in_pos=@show_in_pos, min_stock_alert=@min_stock_alert,
@@ -249,7 +249,7 @@ router.post('/import', authenticateToken, requireAdmin, async (req, res) => {
 
     const result = { created: 0, updated: 0, skipped: 0, errors: [] };
 
-    const runImport = db.transaction(() => {
+    const runImport = await db.transaction(() => {
       ws.eachRow((row, rowNumber) => {
         if (rowNumber === 1) return; // header
         const name = cellStr(row, 'name');
@@ -297,7 +297,7 @@ router.post('/import', authenticateToken, requireAdmin, async (req, res) => {
         } else {
           const info = insert.run(record);
           if (record.product_type === 'stock_tracked' && record.current_stock > 0) {
-            db.prepare(`INSERT INTO stock_movements (product_id, movement_type, quantity, quantity_before, quantity_after, reason, user_id)
+            await db.prepare(`INSERT INTO stock_movements (product_id, movement_type, quantity, quantity_before, quantity_after, reason, user_id)
                         VALUES (?, 'adjustment_in', ?, 0, ?, 'استيراد من Excel', ?)`)
               .run(info.lastInsertRowid, record.current_stock, record.current_stock, req.user.id);
           }

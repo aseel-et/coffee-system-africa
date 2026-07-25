@@ -5,7 +5,7 @@ const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const { logActivity } = require('../utils/activityLogger');
 
 // GET /api/categories
-router.get('/', authenticateToken, (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
   try {
     const { active_only } = req.query;
     let query = `
@@ -18,7 +18,7 @@ router.get('/', authenticateToken, (req, res) => {
     if (conditions.length) query += ' WHERE ' + conditions.join(' AND ');
     query += ' GROUP BY c.id ORDER BY c.sort_order ASC, c.name ASC';
     
-    const categories = db.prepare(query).all();
+    const categories = await db.prepare(query).all();
     res.json({ success: true, data: categories });
   } catch (err) {
     res.status(500).json({ success: false, message: 'خطأ في جلب التصنيفات' });
@@ -26,19 +26,19 @@ router.get('/', authenticateToken, (req, res) => {
 });
 
 // POST /api/categories
-router.post('/', authenticateToken, requireAdmin, (req, res) => {
+router.post('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { name, name_ar, color, icon, sort_order, is_active = 1 } = req.body;
     if (!name) return res.status(400).json({ success: false, message: 'اسم التصنيف مطلوب' });
     
-    const result = db.prepare(`
+    const result = await db.prepare(`
       INSERT INTO categories (name, name_ar, color, icon, sort_order, is_active)
       VALUES (?, ?, ?, ?, ?, ?)
     `).run(name, name_ar || name, color || '#92400E', icon || 'tag', sort_order || 0, is_active ? 1 : 0);
 
     logActivity(req.user.id, req.user.full_name, 'create', 'categories', `إضافة تصنيف: ${name}`, 'category', result.lastInsertRowid);
     
-    const category = db.prepare('SELECT * FROM categories WHERE id = ?').get(result.lastInsertRowid);
+    const category = await db.prepare('SELECT * FROM categories WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json({ success: true, data: category, message: 'تم إضافة التصنيف بنجاح' });
   } catch (err) {
     res.status(500).json({ success: false, message: 'خطأ في إضافة التصنيف' });
@@ -46,15 +46,15 @@ router.post('/', authenticateToken, requireAdmin, (req, res) => {
 });
 
 // PUT /api/categories/:id
-router.put('/:id', authenticateToken, requireAdmin, (req, res) => {
+router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { name, name_ar, color, icon, sort_order, is_active } = req.body;
     const catId = parseInt(req.params.id);
     
-    const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(catId);
+    const cat = await db.prepare('SELECT * FROM categories WHERE id = ?').get(catId);
     if (!cat) return res.status(404).json({ success: false, message: 'التصنيف غير موجود' });
     
-    db.prepare(`
+    await db.prepare(`
       UPDATE categories SET name = ?, name_ar = ?, color = ?, icon = ?, sort_order = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).run(
@@ -65,7 +65,7 @@ router.put('/:id', authenticateToken, requireAdmin, (req, res) => {
 
     logActivity(req.user.id, req.user.full_name, 'update', 'categories', `تعديل تصنيف: ${name || cat.name}`, 'category', catId);
     
-    const updated = db.prepare('SELECT * FROM categories WHERE id = ?').get(catId);
+    const updated = await db.prepare('SELECT * FROM categories WHERE id = ?').get(catId);
     res.json({ success: true, data: updated, message: 'تم تحديث التصنيف بنجاح' });
   } catch (err) {
     res.status(500).json({ success: false, message: 'خطأ في تحديث التصنيف' });
@@ -73,13 +73,13 @@ router.put('/:id', authenticateToken, requireAdmin, (req, res) => {
 });
 
 // DELETE /api/categories/:id
-router.delete('/:id', authenticateToken, requireAdmin, (req, res) => {
+router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const catId = parseInt(req.params.id);
-    const cat = db.prepare('SELECT * FROM categories WHERE id = ?').get(catId);
+    const cat = await db.prepare('SELECT * FROM categories WHERE id = ?').get(catId);
     if (!cat) return res.status(404).json({ success: false, message: 'التصنيف غير موجود' });
     
-    const productCount = db.prepare('SELECT COUNT(*) as count FROM products WHERE category_id = ?').get(catId);
+    const productCount = await db.prepare('SELECT COUNT(*) as count FROM products WHERE category_id = ?').get(catId);
     if (productCount.count > 0) {
       return res.status(409).json({ 
         success: false, 
@@ -87,7 +87,7 @@ router.delete('/:id', authenticateToken, requireAdmin, (req, res) => {
       });
     }
 
-    db.prepare('DELETE FROM categories WHERE id = ?').run(catId);
+    await db.prepare('DELETE FROM categories WHERE id = ?').run(catId);
     logActivity(req.user.id, req.user.full_name, 'delete', 'categories', `حذف تصنيف: ${cat.name}`, 'category', catId);
     res.json({ success: true, message: 'تم حذف التصنيف بنجاح' });
   } catch (err) {

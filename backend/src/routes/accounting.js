@@ -8,10 +8,10 @@ const ledger = require('../accounting/ledger');
 const ROOT_LABELS = { asset: 'الأصول', liability: 'الخصوم', equity: 'حقوق الملكية', income: 'الإيرادات', expense: 'المصروفات' };
 
 // ── GET /api/accounting/chart  → hierarchical chart of accounts (with balances) ──
-router.get('/chart', authenticateToken, requireAdmin, (req, res) => {
+router.get('/chart', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const accounts = db.prepare('SELECT * FROM accounts ORDER BY code').all();
-    const bal = db.prepare(`SELECT account_id, SUM(debit) d, SUM(credit) c FROM gl_entries GROUP BY account_id`).all();
+    const accounts = await db.prepare('SELECT * FROM accounts ORDER BY code').all();
+    const bal = await db.prepare(`SELECT account_id, SUM(debit) d, SUM(credit) c FROM gl_entries GROUP BY account_id`).all();
     const balMap = {};
     bal.forEach(b => { balMap[b.account_id] = (b.d || 0) - (b.c || 0); });
 
@@ -37,26 +37,26 @@ router.get('/chart', authenticateToken, requireAdmin, (req, res) => {
 });
 
 // ── GET /api/accounting/accounts  → flat list (for dropdowns) ──
-router.get('/accounts', authenticateToken, requireAdmin, (req, res) => {
+router.get('/accounts', authenticateToken, requireAdmin, async (req, res) => {
   const ledgerOnly = req.query.ledger_only === 'true';
   let q = 'SELECT id, code, name, name_ar, root_type, is_group FROM accounts';
   if (ledgerOnly) q += ' WHERE is_group = 0';
   q += ' ORDER BY code';
-  res.json({ success: true, data: db.prepare(q).all() });
+  res.json({ success: true, data: await db.prepare(q).all() });
 });
 
 // ── POST /api/accounting/accounts ──
-router.post('/accounts', authenticateToken, requireAdmin, (req, res) => {
+router.post('/accounts', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { code, name, name_ar, parent_id, is_group, account_type } = req.body;
     if (!name) return res.status(400).json({ success: false, message: 'اسم الحساب مطلوب' });
     if (!parent_id) return res.status(400).json({ success: false, message: 'الحساب الأب مطلوب' });
-    const parent = db.prepare('SELECT * FROM accounts WHERE id = ?').get(parent_id);
+    const parent = await db.prepare('SELECT * FROM accounts WHERE id = ?').get(parent_id);
     if (!parent) return res.status(400).json({ success: false, message: 'الحساب الأب غير موجود' });
-    if (code && db.prepare('SELECT 1 FROM accounts WHERE code = ?').get(code)) {
+    if (code && await db.prepare('SELECT 1 FROM accounts WHERE code = ?').get(code)) {
       return res.status(409).json({ success: false, message: 'رمز الحساب مستخدم مسبقاً' });
     }
-    const info = db.prepare(`INSERT INTO accounts (code, name, name_ar, parent_id, root_type, account_type, is_group)
+    const info = await db.prepare(`INSERT INTO accounts (code, name, name_ar, parent_id, root_type, account_type, is_group)
       VALUES (?, ?, ?, ?, ?, ?, ?)`).run(code || null, name, name_ar || name, parent_id, parent.root_type, account_type || null, is_group ? 1 : 0);
     logActivity(req.user.id, req.user.full_name, 'create', 'accounting', `إضافة حساب: ${name}`, 'account', info.lastInsertRowid);
     res.status(201).json({ success: true, data: { id: info.lastInsertRowid }, message: 'تمت إضافة الحساب' });
@@ -67,16 +67,16 @@ router.post('/accounts', authenticateToken, requireAdmin, (req, res) => {
 });
 
 // ── PUT /api/accounting/accounts/:id ──
-router.put('/accounts/:id', authenticateToken, requireAdmin, (req, res) => {
+router.put('/accounts/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const acc = db.prepare('SELECT * FROM accounts WHERE id = ?').get(id);
+    const acc = await db.prepare('SELECT * FROM accounts WHERE id = ?').get(id);
     if (!acc) return res.status(404).json({ success: false, message: 'الحساب غير موجود' });
     const { name, name_ar, code, account_type, is_active } = req.body;
-    if (code && code !== acc.code && db.prepare('SELECT 1 FROM accounts WHERE code = ? AND id <> ?').get(code, id)) {
+    if (code && code !== acc.code && await db.prepare('SELECT 1 FROM accounts WHERE code = ? AND id <> ?').get(code, id)) {
       return res.status(409).json({ success: false, message: 'رمز الحساب مستخدم مسبقاً' });
     }
-    db.prepare(`UPDATE accounts SET name=?, name_ar=?, code=?, account_type=?, is_active=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`)
+    await db.prepare(`UPDATE accounts SET name=?, name_ar=?, code=?, account_type=?, is_active=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`)
       .run(name || acc.name, name_ar || acc.name_ar, code !== undefined ? code : acc.code,
            account_type !== undefined ? account_type : acc.account_type,
            is_active !== undefined ? (is_active ? 1 : 0) : acc.is_active, id);
@@ -89,18 +89,18 @@ router.put('/accounts/:id', authenticateToken, requireAdmin, (req, res) => {
 });
 
 // ── DELETE /api/accounting/accounts/:id ──
-router.delete('/accounts/:id', authenticateToken, requireAdmin, (req, res) => {
+router.delete('/accounts/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const acc = db.prepare('SELECT * FROM accounts WHERE id = ?').get(id);
+    const acc = await db.prepare('SELECT * FROM accounts WHERE id = ?').get(id);
     if (!acc) return res.status(404).json({ success: false, message: 'الحساب غير موجود' });
-    if (db.prepare('SELECT 1 FROM accounts WHERE parent_id = ?').get(id)) {
+    if (await db.prepare('SELECT 1 FROM accounts WHERE parent_id = ?').get(id)) {
       return res.status(409).json({ success: false, message: 'لا يمكن حذف حساب يحتوي على حسابات فرعية' });
     }
-    if (db.prepare('SELECT 1 FROM gl_entries WHERE account_id = ? LIMIT 1').get(id)) {
+    if (await db.prepare('SELECT 1 FROM gl_entries WHERE account_id = ? LIMIT 1').get(id)) {
       return res.status(409).json({ success: false, message: 'لا يمكن حذف حساب له حركات في دفتر الأستاذ' });
     }
-    db.prepare('DELETE FROM accounts WHERE id = ?').run(id);
+    await db.prepare('DELETE FROM accounts WHERE id = ?').run(id);
     logActivity(req.user.id, req.user.full_name, 'delete', 'accounting', `حذف حساب: ${acc.name}`, 'account', id);
     res.json({ success: true, message: 'تم حذف الحساب' });
   } catch (err) {
@@ -109,7 +109,7 @@ router.delete('/accounts/:id', authenticateToken, requireAdmin, (req, res) => {
 });
 
 // ── POST /api/accounting/rebuild  → re-post the whole ledger from operations ──
-router.post('/rebuild', authenticateToken, requireAdmin, (req, res) => {
+router.post('/rebuild', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const r = ledger.rebuildLedger();
     logActivity(req.user.id, req.user.full_name, 'update', 'accounting', 'إعادة ترحيل دفتر الأستاذ', 'ledger', null);
@@ -121,22 +121,22 @@ router.post('/rebuild', authenticateToken, requireAdmin, (req, res) => {
 });
 
 // ── Reports ──
-router.get('/trial-balance', authenticateToken, requireAdmin, (req, res) => {
+router.get('/trial-balance', authenticateToken, requireAdmin, async (req, res) => {
   try { res.json({ success: true, data: ledger.trialBalance(req.query.from || null, req.query.to || null) }); }
   catch (err) { console.error(err); res.status(500).json({ success: false, message: 'خطأ في ميزان المراجعة' }); }
 });
 
-router.get('/profit-loss', authenticateToken, requireAdmin, (req, res) => {
+router.get('/profit-loss', authenticateToken, requireAdmin, async (req, res) => {
   try { res.json({ success: true, data: ledger.profitLoss(req.query.from || null, req.query.to || null) }); }
   catch (err) { console.error(err); res.status(500).json({ success: false, message: 'خطأ في قائمة الدخل' }); }
 });
 
-router.get('/balance-sheet', authenticateToken, requireAdmin, (req, res) => {
+router.get('/balance-sheet', authenticateToken, requireAdmin, async (req, res) => {
   try { res.json({ success: true, data: ledger.balanceSheet(req.query.as_of || null) }); }
   catch (err) { console.error(err); res.status(500).json({ success: false, message: 'خطأ في الميزانية العمومية' }); }
 });
 
-router.get('/general-ledger', authenticateToken, requireAdmin, (req, res) => {
+router.get('/general-ledger', authenticateToken, requireAdmin, async (req, res) => {
   try {
     if (!req.query.account_id) return res.status(400).json({ success: false, message: 'اختر حساباً' });
     const data = ledger.generalLedger(parseInt(req.query.account_id), req.query.from || null, req.query.to || null);
@@ -146,7 +146,7 @@ router.get('/general-ledger', authenticateToken, requireAdmin, (req, res) => {
 });
 
 // ── Manual Journal Entry ──
-router.post('/journal-entry', authenticateToken, requireAdmin, (req, res) => {
+router.post('/journal-entry', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { posting_date, remarks, lines } = req.body;
     if (!posting_date) return res.status(400).json({ success: false, message: 'تاريخ القيد مطلوب' });
@@ -163,12 +163,12 @@ router.post('/journal-entry', authenticateToken, requireAdmin, (req, res) => {
       return res.status(400).json({ success: false, message: `القيد غير متوازن: المدين ${totalDebit.toFixed(2)} ≠ الدائن ${totalCredit.toFixed(2)}` });
     }
 
-    const result = db.transaction(() => {
-      const seq = (db.prepare('SELECT COUNT(*) c FROM journal_entries').get().c) + 1;
+    const result = await db.transaction(() => {
+      const seq = (await db.prepare('SELECT COUNT(*) c FROM journal_entries').get().c) + 1;
       const entryNo = `JV-${String(seq).padStart(5, '0')}`;
-      db.prepare('INSERT INTO journal_entries (entry_no, posting_date, remarks, total_debit, created_by) VALUES (?, ?, ?, ?, ?)')
+      await db.prepare('INSERT INTO journal_entries (entry_no, posting_date, remarks, total_debit, created_by) VALUES (?, ?, ?, ?, ?)')
         .run(entryNo, posting_date, remarks || null, +totalDebit.toFixed(2), req.user.id);
-      const ins = db.prepare(`INSERT INTO gl_entries (posting_date, account_id, debit, credit, voucher_type, voucher_no, remarks)
+      const ins = await db.prepare(`INSERT INTO gl_entries (posting_date, account_id, debit, credit, voucher_type, voucher_no, remarks)
         VALUES (?, ?, ?, ?, 'Journal Entry', ?, ?)`);
       for (const l of lines) {
         ins.run(posting_date, l.account_id, +(parseFloat(l.debit) || 0).toFixed(2), +(parseFloat(l.credit) || 0).toFixed(2), entryNo, l.remarks || remarks || null);
@@ -184,8 +184,8 @@ router.post('/journal-entry', authenticateToken, requireAdmin, (req, res) => {
   }
 });
 
-router.get('/journal-entries', authenticateToken, requireAdmin, (req, res) => {
-  const list = db.prepare('SELECT * FROM journal_entries ORDER BY id DESC LIMIT 100').all();
+router.get('/journal-entries', authenticateToken, requireAdmin, async (req, res) => {
+  const list = await db.prepare('SELECT * FROM journal_entries ORDER BY id DESC LIMIT 100').all();
   res.json({ success: true, data: list });
 });
 

@@ -1,13 +1,13 @@
 const db = require('../database/connection');
 
 // ── Account lookup ──
-function accId(code) {
-  const r = db.prepare('SELECT id FROM accounts WHERE code = ?').get(code);
+async function accId(code) {
+  const r = await db.prepare('SELECT id FROM accounts WHERE code = ?').get(code);
   return r ? r.id : null;
 }
 
 // Map an expense (category + description) to an operating-expense ledger account.
-function mapExpenseAccountId(text) {
+async function mapExpenseAccountId(text) {
   const t = text || '';
   if (/كهربا|ماء|مياه|غاز/.test(t)) return accId('5220');
   if (/راتب|رواتب|عامل|عمال|أجور|اجور|سلفة/.test(t)) return accId('5210');
@@ -25,11 +25,11 @@ const dateOf = (s) => (s ? String(s).split('T')[0].substring(0, 10) : new Date()
  * (sales, purchases, expenses, customer transactions). Manual journal
  * entries (voucher_type = 'Journal Entry') are preserved.
  */
-function rebuildLedger() {
+async function rebuildLedger() {
   const CASH = accId('1110'), BANK = accId('1120'), AR = accId('1130'), STOCK = accId('1140');
   const SALES = accId('4110'), COGS = accId('5110'), OPEQ = accId('3120');
 
-  const insEntry = db.prepare(`INSERT INTO gl_entries
+  const insEntry = await db.prepare(`INSERT INTO gl_entries
     (posting_date, account_id, debit, credit, voucher_type, voucher_no, party, against, remarks)
     VALUES (@posting_date, @account_id, @debit, @credit, @voucher_type, @voucher_no, @party, @against, @remarks)`);
 
@@ -48,15 +48,15 @@ function rebuildLedger() {
   const result = { sales: 0, purchases: 0, expenses: 0, payments: 0, openings: 0 };
 
   db.transaction(() => {
-    db.prepare("DELETE FROM gl_entries WHERE voucher_type != 'Journal Entry'").run();
+    await db.prepare("DELETE FROM gl_entries WHERE voucher_type != 'Journal Entry'").run();
 
     // ── SALES ──
     const cogsBySale = {};
-    db.prepare(`SELECT sale_id, SUM(cost_price * quantity) AS c FROM sale_items
+    await db.prepare(`SELECT sale_id, SUM(cost_price * quantity) AS c FROM sale_items
                 WHERE product_type = 'stock_tracked' GROUP BY sale_id`).all()
       .forEach(r => { cogsBySale[r.sale_id] = r.c || 0; });
 
-    const sales = db.prepare(`SELECT s.id, s.invoice_number, s.created_at, s.total, s.cash_amount,
+    const sales = await db.prepare(`SELECT s.id, s.invoice_number, s.created_at, s.total, s.cash_amount,
         s.card_amount, s.debt_amount, c.name AS customer_name
         FROM sales s LEFT JOIN customers c ON c.id = s.customer_id
         WHERE s.status = 'completed'`).all();
@@ -82,7 +82,7 @@ function rebuildLedger() {
     // ── PURCHASES (cash) — split by product type: stocked goods → Inventory,
     //    consumables (non-stock, made-to-order) → COGS (expensed immediately) ──
     const splitByPurchase = {};
-    db.prepare(`SELECT pi.purchase_id, p.product_type, SUM(pi.total) AS amt
+    await db.prepare(`SELECT pi.purchase_id, p.product_type, SUM(pi.total) AS amt
                 FROM purchase_items pi LEFT JOIN products p ON p.id = pi.product_id
                 GROUP BY pi.purchase_id, p.product_type`).all()
       .forEach(r => {
@@ -90,7 +90,7 @@ function rebuildLedger() {
         if (r.product_type === 'stock_tracked') s.stock += r.amt || 0; else s.cogs += r.amt || 0;
       });
 
-    db.prepare("SELECT id, invoice_number, purchase_date, total_amount, supplier_name FROM purchases WHERE status = 'received'").all()
+    await db.prepare("SELECT id, invoice_number, purchase_date, total_amount, supplier_name FROM purchases WHERE status = 'received'").all()
       .forEach(p => {
         const split = splitByPurchase[p.id];
         let stockAmt = split ? split.stock : 0;
@@ -105,7 +105,7 @@ function rebuildLedger() {
       });
 
     // ── EXPENSES ──
-    db.prepare(`SELECT e.id, e.amount, e.description, e.expense_date, e.payment_method, ec.name AS category_name
+    await db.prepare(`SELECT e.id, e.amount, e.description, e.expense_date, e.payment_method, ec.name AS category_name
                 FROM expenses e LEFT JOIN expense_categories ec ON ec.id = e.expense_category_id`).all()
       .forEach(e => {
         const exAcc = mapExpenseAccountId(`${e.category_name || ''} ${e.description || ''}`);
@@ -119,7 +119,7 @@ function rebuildLedger() {
 
     // ── CUSTOMER TRANSACTIONS (payments, refunds, opening balances) ──
     // 'debt' with reference_type='sale' is already captured by the sales posting → skip.
-    db.prepare(`SELECT ct.*, c.name AS customer_name FROM customer_transactions ct
+    await db.prepare(`SELECT ct.*, c.name AS customer_name FROM customer_transactions ct
                 LEFT JOIN customers c ON c.id = ct.customer_id`).all()
       .forEach(t => {
         const d = dateOf(t.created_at);
@@ -162,24 +162,24 @@ function rebuildLedger() {
 // ── Reports ──
 
 // Map of account_id -> {debit, credit} aggregated with an optional date filter.
-function aggregate(whereSql = '', params = []) {
-  const rows = db.prepare(`SELECT account_id, SUM(debit) AS debit, SUM(credit) AS credit
+async function aggregate(whereSql = '', params = []) {
+  const rows = await db.prepare(`SELECT account_id, SUM(debit) AS debit, SUM(credit) AS credit
     FROM gl_entries ${whereSql ? 'WHERE ' + whereSql : ''} GROUP BY account_id`).all(...params);
   const m = {};
   rows.forEach(r => { m[r.account_id] = { debit: r.debit || 0, credit: r.credit || 0 }; });
   return m;
 }
 
-function allAccounts() {
-  return db.prepare('SELECT * FROM accounts ORDER BY code').all();
+async function allAccounts() {
+  return await db.prepare('SELECT * FROM accounts ORDER BY code').all();
 }
 
 // Natural balance for display: assets/expenses are debit-positive; others credit-positive.
-function naturalBalance(root, debit, credit) {
+async function naturalBalance(root, debit, credit) {
   return (root === 'asset' || root === 'expense') ? (debit - credit) : (credit - debit);
 }
 
-function trialBalance(from, to) {
+async function trialBalance(from, to) {
   const accounts = allAccounts().filter(a => !a.is_group);
   const openConds = [], openParams = [];
   if (from) { openConds.push('posting_date < ?'); openParams.push(from); }
@@ -209,7 +209,7 @@ function trialBalance(from, to) {
 
 // Build a nested tree (groups + ledgers) with natural-balance amounts for the
 // given root types, using a pre-aggregated balance map.
-function buildTree(rootTypes, balMap) {
+async function buildTree(rootTypes, balMap) {
   const accounts = allAccounts();
   const byParent = {};
   accounts.forEach(a => { (byParent[a.parent_id] = byParent[a.parent_id] || []).push(a); });
@@ -230,7 +230,7 @@ function buildTree(rootTypes, balMap) {
   return accounts.filter(a => a.parent_id === null && rootTypes.includes(a.root_type)).map(build);
 }
 
-function profitLoss(from, to) {
+async function profitLoss(from, to) {
   const conds = [], params = [];
   if (from) { conds.push('posting_date >= ?'); params.push(from); }
   if (to) { conds.push('posting_date <= ?'); params.push(to); }
@@ -248,7 +248,7 @@ function profitLoss(from, to) {
   };
 }
 
-function balanceSheet(asOf) {
+async function balanceSheet(asOf) {
   const conds = [], params = [];
   if (asOf) { conds.push('posting_date <= ?'); params.push(asOf); }
   const bal = aggregate(conds.join(' AND '), params);
@@ -278,20 +278,20 @@ function balanceSheet(asOf) {
   };
 }
 
-function generalLedger(accountId, from, to) {
-  const account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(accountId);
+async function generalLedger(accountId, from, to) {
+  const account = await db.prepare('SELECT * FROM accounts WHERE id = ?').get(accountId);
   if (!account) return null;
 
   let opening = 0;
   if (from) {
-    const o = db.prepare('SELECT COALESCE(SUM(debit),0) d, COALESCE(SUM(credit),0) c FROM gl_entries WHERE account_id = ? AND posting_date < ?').get(accountId, from);
+    const o = await db.prepare('SELECT COALESCE(SUM(debit),0) d, COALESCE(SUM(credit),0) c FROM gl_entries WHERE account_id = ? AND posting_date < ?').get(accountId, from);
     opening = o.d - o.c;
   }
 
   const conds = ['account_id = ?']; const params = [accountId];
   if (from) { conds.push('posting_date >= ?'); params.push(from); }
   if (to) { conds.push('posting_date <= ?'); params.push(to); }
-  const entries = db.prepare(`SELECT posting_date, debit, credit, voucher_type, voucher_no, party, against, remarks
+  const entries = await db.prepare(`SELECT posting_date, debit, credit, voucher_type, voucher_no, party, against, remarks
     FROM gl_entries WHERE ${conds.join(' AND ')} ORDER BY posting_date, id`).all(...params);
 
   let running = opening;

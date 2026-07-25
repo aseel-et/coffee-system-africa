@@ -28,7 +28,7 @@ const authenticateToken = async (req, res, next) => {
   }
 };
 
-const requireAdmin = (req, res, next) => {
+const requireAdmin = async (req, res, next) => {
   if (req.user.role !== 'admin') {
     return res.status(403).json({ success: false, message: 'هذا الإجراء يتطلب صلاحيات المدير' });
   }
@@ -36,7 +36,7 @@ const requireAdmin = (req, res, next) => {
 };
 
 const requireRole = (...roles) => {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     if (!roles.includes(req.user.role)) {
       return res.status(403).json({ success: false, message: 'ليس لديك صلاحية للقيام بهذا الإجراء' });
     }

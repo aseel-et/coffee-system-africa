@@ -5,7 +5,7 @@ const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const { logActivity } = require('../utils/activityLogger');
 
 // GET /api/inventory - Stock levels
-router.get('/', authenticateToken, requireAdmin, (req, res) => {
+router.get('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { search, status } = req.query;
     let query = `
@@ -22,7 +22,7 @@ router.get('/', authenticateToken, requireAdmin, (req, res) => {
     else if (status === 'ok') query += ' AND p.current_stock > p.min_stock_alert';
     
     query += ' ORDER BY p.current_stock ASC, p.name ASC';
-    const products = db.prepare(query).all(...params);
+    const products = await db.prepare(query).all(...params);
     res.json({ success: true, data: products });
   } catch (err) {
     res.status(500).json({ success: false, message: 'خطأ في جلب بيانات المخزون' });
@@ -30,7 +30,7 @@ router.get('/', authenticateToken, requireAdmin, (req, res) => {
 });
 
 // POST /api/inventory/adjust - Manual stock adjustment
-router.post('/adjust', authenticateToken, requireAdmin, (req, res) => {
+router.post('/adjust', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { product_id, adjustment_type, quantity, reason } = req.body;
     
@@ -38,7 +38,7 @@ router.post('/adjust', authenticateToken, requireAdmin, (req, res) => {
       return res.status(400).json({ success: false, message: 'جميع الحقول مطلوبة' });
     }
     
-    const product = db.prepare('SELECT * FROM products WHERE id = ? AND product_type = ?').get(product_id, 'stock_tracked');
+    const product = await db.prepare('SELECT * FROM products WHERE id = ? AND product_type = ?').get(product_id, 'stock_tracked');
     if (!product) return res.status(404).json({ success: false, message: 'المنتج غير موجود أو ليس مخزونًا' });
 
     const qty = parseFloat(quantity);
@@ -59,8 +59,8 @@ router.post('/adjust', authenticateToken, requireAdmin, (req, res) => {
       return res.status(400).json({ success: false, message: 'نوع التعديل غير صالح' });
     }
 
-    db.prepare('UPDATE products SET current_stock = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(after, product_id);
-    db.prepare(`
+    await db.prepare('UPDATE products SET current_stock = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(after, product_id);
+    await db.prepare(`
       INSERT INTO stock_movements (product_id, movement_type, quantity, quantity_before, quantity_after, reason, reference_type, user_id)
       VALUES (?, ?, ?, ?, ?, ?, 'manual_adjustment', ?)
     `).run(product_id, movementType, qty, before, after, reason, req.user.id);
@@ -76,7 +76,7 @@ router.post('/adjust', authenticateToken, requireAdmin, (req, res) => {
 });
 
 // GET /api/inventory/movements - Stock movement history
-router.get('/movements', authenticateToken, requireAdmin, (req, res) => {
+router.get('/movements', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { product_id, movement_type, from_date, to_date, limit = 100, offset = 0 } = req.query;
     let query = `
@@ -94,12 +94,12 @@ router.get('/movements', authenticateToken, requireAdmin, (req, res) => {
     if (to_date) { query += ' AND DATE(sm.created_at) <= ?'; params.push(to_date); }
     
     const countParams = [...params];
-    const countResult = db.prepare(query.replace('SELECT sm.*, p.name as product_name, p.unit, u.full_name as user_name', 'SELECT COUNT(*) as total')).get(...countParams);
+    const countResult = await db.prepare(query.replace('SELECT sm.*, p.name as product_name, p.unit, u.full_name as user_name', 'SELECT COUNT(*) as total')).get(...countParams);
     
     query += ' ORDER BY sm.created_at DESC LIMIT ? OFFSET ?';
     params.push(parseInt(limit), parseInt(offset));
     
-    const movements = db.prepare(query).all(...params);
+    const movements = await db.prepare(query).all(...params);
     res.json({ success: true, data: movements, total: countResult.total });
   } catch (err) {
     res.status(500).json({ success: false, message: 'خطأ في جلب حركات المخزون' });
@@ -107,9 +107,9 @@ router.get('/movements', authenticateToken, requireAdmin, (req, res) => {
 });
 
 // GET /api/inventory/alerts - Low/out of stock alerts
-router.get('/alerts', authenticateToken, (req, res) => {
+router.get('/alerts', authenticateToken, async (req, res) => {
   try {
-    const lowStock = db.prepare(`
+    const lowStock = await db.prepare(`
       SELECT p.id, p.name, p.current_stock, p.min_stock_alert, p.unit, c.name as category_name
       FROM products p LEFT JOIN categories c ON c.id = p.category_id
       WHERE p.product_type = 'stock_tracked' AND p.is_active = 1
@@ -117,7 +117,7 @@ router.get('/alerts', authenticateToken, (req, res) => {
       ORDER BY p.current_stock ASC
     `).all();
     
-    const outOfStock = db.prepare(`
+    const outOfStock = await db.prepare(`
       SELECT p.id, p.name, p.current_stock, p.min_stock_alert, p.unit, c.name as category_name
       FROM products p LEFT JOIN categories c ON c.id = p.category_id
       WHERE p.product_type = 'stock_tracked' AND p.is_active = 1 AND p.current_stock <= 0

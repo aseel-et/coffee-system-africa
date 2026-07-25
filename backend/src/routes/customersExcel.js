@@ -47,7 +47,7 @@ router.get('/template', authenticateToken, requireAdmin, async (req, res) => {
 // ── GET /api/customers/export ──
 router.get('/export', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const customers = db.prepare('SELECT * FROM customers ORDER BY name').all();
+    const customers = await db.prepare('SELECT * FROM customers ORDER BY name').all();
     const wb = new X.Workbook();
     wb.creator = 'كافيتيريا جامعة أفريقيا';
     X.createDataSheet(wb, { sheetName: SHEET, columns: COLUMNS, rows: customers.map(rowFor) });
@@ -66,17 +66,17 @@ router.post('/import', authenticateToken, requireAdmin, async (req, res) => {
     const { rows, error } = await X.parseUpload(req.body.fileBase64, SHEET, COLUMNS);
     if (error) return res.status(400).json({ success: false, message: error });
 
-    const findByPhone = db.prepare("SELECT id FROM customers WHERE phone = ? AND phone <> '' LIMIT 1");
-    const findByName = db.prepare('SELECT id FROM customers WHERE name = ? LIMIT 1');
-    const insert = db.prepare(`INSERT INTO customers (name, phone, email, address, balance, is_active)
+    const findByPhone = await db.prepare("SELECT id FROM customers WHERE phone = ? AND phone <> '' LIMIT 1");
+    const findByName = await db.prepare('SELECT id FROM customers WHERE name = ? LIMIT 1');
+    const insert = await db.prepare(`INSERT INTO customers (name, phone, email, address, balance, is_active)
                                VALUES (@name, @phone, @email, @address, @balance, @is_active)`);
-    const update = db.prepare(`UPDATE customers SET name=@name, phone=@phone, email=@email, address=@address,
+    const update = await db.prepare(`UPDATE customers SET name=@name, phone=@phone, email=@email, address=@address,
                                balance=@balance, is_active=@is_active, updated_at=CURRENT_TIMESTAMP WHERE id=@id`);
-    const insTx = db.prepare(`INSERT INTO customer_transactions (customer_id, transaction_type, amount, balance_before, balance_after, notes, user_id)
+    const insTx = await db.prepare(`INSERT INTO customer_transactions (customer_id, transaction_type, amount, balance_before, balance_after, notes, user_id)
                               VALUES (?, 'adjustment', ?, 0, ?, 'رصيد افتتاحي (استيراد Excel)', ?)`);
 
     const result = { created: 0, updated: 0, skipped: 0, errors: [] };
-    const run = db.transaction(() => {
+    const run = await db.transaction(() => {
       for (const row of rows) {
         const name = row.name;
         if (!name) { continue; }

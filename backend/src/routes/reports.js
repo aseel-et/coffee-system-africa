@@ -4,7 +4,7 @@ const db = require('../database/connection');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 
 // GET /api/reports/sales
-router.get('/sales', authenticateToken, requireAdmin, (req, res) => {
+router.get('/sales', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { start_date, end_date } = req.query;
     const today = new Date().toISOString().split('T')[0];
@@ -12,7 +12,7 @@ router.get('/sales', authenticateToken, requireAdmin, (req, res) => {
     const end = end_date || today;
 
     // Get sales by product
-    const sales = db.prepare(`
+    const sales = await db.prepare(`
       SELECT p.name as product_name, c.name as category_name,
         SUM(si.quantity) as quantity_sold,
         SUM(si.total) as revenue
@@ -26,7 +26,7 @@ router.get('/sales', authenticateToken, requireAdmin, (req, res) => {
     `).all(start, end);
 
     // Summary
-    const summaryRow = db.prepare(`
+    const summaryRow = await db.prepare(`
       SELECT COUNT(DISTINCT id) as total_orders,
         COALESCE(SUM(total), 0) as total_revenue
       FROM sales
@@ -41,7 +41,7 @@ router.get('/sales', authenticateToken, requireAdmin, (req, res) => {
 });
 
 // GET /api/reports/sales-by-product
-router.get('/sales-by-product', authenticateToken, requireAdmin, (req, res) => {
+router.get('/sales-by-product', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { from_date, to_date, category_id } = req.query;
     const today = new Date().toISOString().split('T')[0];
@@ -65,7 +65,7 @@ router.get('/sales-by-product', authenticateToken, requireAdmin, (req, res) => {
     if (category_id) { query += ' AND p.category_id = ?'; params.push(category_id); }
     query += ' GROUP BY si.product_id ORDER BY total_revenue DESC';
     
-    const data = db.prepare(query).all(...params);
+    const data = await db.prepare(query).all(...params);
     res.json({ success: true, data });
   } catch (err) {
     res.status(500).json({ success: false, message: 'خطأ في تقرير المبيعات حسب المنتج' });
@@ -73,14 +73,14 @@ router.get('/sales-by-product', authenticateToken, requireAdmin, (req, res) => {
 });
 
 // GET /api/reports/sales-by-category
-router.get('/sales-by-category', authenticateToken, requireAdmin, (req, res) => {
+router.get('/sales-by-category', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { from_date, to_date } = req.query;
     const today = new Date().toISOString().split('T')[0];
     const start = from_date || today;
     const end = to_date || today;
 
-    const data = db.prepare(`
+    const data = await db.prepare(`
       SELECT c.id, c.name, c.color,
         SUM(si.total) as total_revenue,
         SUM(si.quantity) as total_qty,
@@ -99,14 +99,14 @@ router.get('/sales-by-category', authenticateToken, requireAdmin, (req, res) => 
 });
 
 // GET /api/reports/employee-performance
-router.get('/employee-performance', authenticateToken, requireAdmin, (req, res) => {
+router.get('/employee-performance', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { from_date, to_date } = req.query;
     const today = new Date().toISOString().split('T')[0];
     const start = from_date || today;
     const end = to_date || today;
 
-    const data = db.prepare(`
+    const data = await db.prepare(`
       SELECT u.id, u.full_name, u.username,
         COUNT(s.id) as total_orders,
         COALESCE(SUM(s.total), 0) as total_sales,
@@ -127,14 +127,14 @@ router.get('/employee-performance', authenticateToken, requireAdmin, (req, res) 
 });
 
 // GET /api/reports/profit
-router.get('/profit', authenticateToken, requireAdmin, (req, res) => {
+router.get('/profit', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { start_date, end_date } = req.query;
     const today = new Date().toISOString().split('T')[0];
     const start = start_date || today;
     const end = end_date || today;
 
-    const details = db.prepare(`
+    const details = await db.prepare(`
       WITH dates AS (
         SELECT DISTINCT DATE(created_at) as date FROM sales WHERE status = 'completed' AND DATE(created_at) >= ? AND DATE(created_at) <= ?
         UNION
@@ -174,9 +174,9 @@ router.get('/profit', authenticateToken, requireAdmin, (req, res) => {
 });
 
 // GET /api/reports/inventory
-router.get('/inventory', authenticateToken, requireAdmin, (req, res) => {
+router.get('/inventory', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const inventory = db.prepare(`
+    const inventory = await db.prepare(`
       SELECT p.id, p.name, p.name_ar, p.sku, p.current_stock, p.min_stock_alert, 
         p.unit, p.cost_price, p.selling_price,
         (p.current_stock * p.cost_price) as inventory_value,
@@ -207,7 +207,7 @@ router.get('/inventory', authenticateToken, requireAdmin, (req, res) => {
 });
 
 // GET /api/reports/expenses
-router.get('/expenses', authenticateToken, requireAdmin, (req, res) => {
+router.get('/expenses', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { from_date, to_date, expense_category_id } = req.query;
     const today = new Date().toISOString().split('T')[0];
@@ -223,7 +223,7 @@ router.get('/expenses', authenticateToken, requireAdmin, (req, res) => {
     if (expense_category_id) { query += ' AND e.expense_category_id = ?'; params.push(expense_category_id); }
     query += ' ORDER BY e.expense_date DESC';
     
-    const data = db.prepare(query).all(...params);
+    const data = await db.prepare(query).all(...params);
     const summary = { total: data.reduce((sum, e) => sum + e.amount, 0), count: data.length };
     res.json({ success: true, data, summary });
   } catch (err) {
