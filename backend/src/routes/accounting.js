@@ -17,7 +17,7 @@ router.get('/chart', authenticateToken, requireAdmin, async (req, res) => {
 
     const byParent = {};
     accounts.forEach(a => { (byParent[a.parent_id] = byParent[a.parent_id] || []).push(a); });
-    const build = (a) => {
+    const build = async (a) => {
       const children = (byParent[a.id] || []).map(build);
       const sign = (a.root_type === 'asset' || a.root_type === 'expense') ? 1 : -1;
       const self = (balMap[a.id] || 0) * sign;
@@ -76,7 +76,7 @@ router.put('/accounts/:id', authenticateToken, requireAdmin, async (req, res) =>
     if (code && code !== acc.code && await db.prepare('SELECT 1 FROM accounts WHERE code = ? AND id <> ?').get(code, id)) {
       return res.status(409).json({ success: false, message: 'رمز الحساب مستخدم مسبقاً' });
     }
-    await db.prepare(`UPDATE accounts SET name=?, name_ar=?, code=?, account_type=?, is_active=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`)
+    db.prepare(`UPDATE accounts SET name=?, name_ar=?, code=?, account_type=?, is_active=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`)
       .run(name || acc.name, name_ar || acc.name_ar, code !== undefined ? code : acc.code,
            account_type !== undefined ? account_type : acc.account_type,
            is_active !== undefined ? (is_active ? 1 : 0) : acc.is_active, id);
@@ -163,12 +163,12 @@ router.post('/journal-entry', authenticateToken, requireAdmin, async (req, res) 
       return res.status(400).json({ success: false, message: `القيد غير متوازن: المدين ${totalDebit.toFixed(2)} ≠ الدائن ${totalCredit.toFixed(2)}` });
     }
 
-    const result = await db.transaction(() => {
-      const seq = (await db.prepare('SELECT COUNT(*) c FROM journal_entries').get().c) + 1;
+    const result = db.transaction(async () => {
+      const seq = ((await db.prepare('SELECT COUNT(*) c FROM journal_entries').get())?.c) + 1;
       const entryNo = `JV-${String(seq).padStart(5, '0')}`;
-      await db.prepare('INSERT INTO journal_entries (entry_no, posting_date, remarks, total_debit, created_by) VALUES (?, ?, ?, ?, ?)')
+      db.prepare('INSERT INTO journal_entries (entry_no, posting_date, remarks, total_debit, created_by) VALUES (?, ?, ?, ?, ?)')
         .run(entryNo, posting_date, remarks || null, +totalDebit.toFixed(2), req.user.id);
-      const ins = await db.prepare(`INSERT INTO gl_entries (posting_date, account_id, debit, credit, voucher_type, voucher_no, remarks)
+      const ins = db.prepare(`INSERT INTO gl_entries (posting_date, account_id, debit, credit, voucher_type, voucher_no, remarks)
         VALUES (?, ?, ?, ?, 'Journal Entry', ?, ?)`);
       for (const l of lines) {
         ins.run(posting_date, l.account_id, +(parseFloat(l.debit) || 0).toFixed(2), +(parseFloat(l.credit) || 0).toFixed(2), entryNo, l.remarks || remarks || null);

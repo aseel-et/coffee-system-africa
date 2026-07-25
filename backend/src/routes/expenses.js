@@ -64,7 +64,7 @@ router.put('/categories/:id', authenticateToken, requireAdmin, async (req, res) 
     const { name, color } = req.body;
     const cat = await db.prepare('SELECT * FROM expense_categories WHERE id = ?').get(id);
     if (!cat) return res.status(404).json({ success: false, message: 'البند غير موجود' });
-    await db.prepare('UPDATE expense_categories SET name = ?, color = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+    db.prepare('UPDATE expense_categories SET name = ?, color = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
       .run(name || cat.name, color || cat.color, id);
     const updated = await db.prepare('SELECT * FROM expense_categories WHERE id = ?').get(id);
     res.json({ success: true, data: updated, message: 'تم تحديث البند بنجاح' });

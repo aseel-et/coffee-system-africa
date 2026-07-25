@@ -185,7 +185,7 @@ router.post('/', authenticateToken, async (req, res) => {
     const total = Math.max(0, subtotal - discAmt);
 
     // Execute within transaction
-    const createSale = await db.transaction(() => {
+    const createSale = db.transaction(async () => {
       const dbPaymentMethod = payment_method === 'debt' ? 'mixed' : (payment_method || 'cash');
 
       // Create sale record
@@ -316,7 +316,7 @@ router.patch('/:id/void', authenticateToken, async (req, res) => {
     if (!sale) return res.status(404).json({ success: false, message: 'الفاتورة غير موجودة' });
     if (sale.status !== 'completed') return res.status(400).json({ success: false, message: 'الفاتورة غير قابلة للإلغاء' });
 
-    const voidSale = await db.transaction(() => {
+    const voidSale = db.transaction(async () => {
       await db.prepare('UPDATE sales SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run('voided', saleId);
       
       // Restore customer balance if it was a debt sale

@@ -24,7 +24,7 @@ const INSTRUCTIONS = [
   ['مفعّل', 'قائمة', '«نعم» عميل فعّال، «لا» معطّل دون حذف.'],
 ];
 
-function rowFor(c) {
+async function rowFor(c) {
   return [c.name, c.phone || '', c.email || '', c.address || '', c.balance ?? 0, c.is_active ? X.YES : X.NO];
 }
 
@@ -66,17 +66,17 @@ router.post('/import', authenticateToken, requireAdmin, async (req, res) => {
     const { rows, error } = await X.parseUpload(req.body.fileBase64, SHEET, COLUMNS);
     if (error) return res.status(400).json({ success: false, message: error });
 
-    const findByPhone = await db.prepare("SELECT id FROM customers WHERE phone = ? AND phone <> '' LIMIT 1");
-    const findByName = await db.prepare('SELECT id FROM customers WHERE name = ? LIMIT 1');
-    const insert = await db.prepare(`INSERT INTO customers (name, phone, email, address, balance, is_active)
+    const findByPhone = db.prepare("SELECT id FROM customers WHERE phone = ? AND phone <> '' LIMIT 1");
+    const findByName = db.prepare('SELECT id FROM customers WHERE name = ? LIMIT 1');
+    const insert = db.prepare(`INSERT INTO customers (name, phone, email, address, balance, is_active)
                                VALUES (@name, @phone, @email, @address, @balance, @is_active)`);
-    const update = await db.prepare(`UPDATE customers SET name=@name, phone=@phone, email=@email, address=@address,
+    const update = db.prepare(`UPDATE customers SET name=@name, phone=@phone, email=@email, address=@address,
                                balance=@balance, is_active=@is_active, updated_at=CURRENT_TIMESTAMP WHERE id=@id`);
-    const insTx = await db.prepare(`INSERT INTO customer_transactions (customer_id, transaction_type, amount, balance_before, balance_after, notes, user_id)
+    const insTx = db.prepare(`INSERT INTO customer_transactions (customer_id, transaction_type, amount, balance_before, balance_after, notes, user_id)
                               VALUES (?, 'adjustment', ?, 0, ?, 'رصيد افتتاحي (استيراد Excel)', ?)`);
 
     const result = { created: 0, updated: 0, skipped: 0, errors: [] };
-    const run = await db.transaction(() => {
+    const run = db.transaction(async () => {
       for (const row of rows) {
         const name = row.name;
         if (!name) { continue; }

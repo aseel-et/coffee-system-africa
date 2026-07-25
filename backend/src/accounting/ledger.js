@@ -18,7 +18,7 @@ async function mapExpenseAccountId(text) {
   return accId('5290');
 }
 
-const dateOf = (s) => (s ? String(s).split('T')[0].substring(0, 10) : new Date().toISOString().split('T')[0]);
+const dateOf = async (s) => (s ? String(s).split('T')[0].substring(0, 10) : new Date().toISOString().split('T')[0]);
 
 /**
  * Rebuild all auto-posted GL entries from the operational data
@@ -29,11 +29,11 @@ async function rebuildLedger() {
   const CASH = accId('1110'), BANK = accId('1120'), AR = accId('1130'), STOCK = accId('1140');
   const SALES = accId('4110'), COGS = accId('5110'), OPEQ = accId('3120');
 
-  const insEntry = await db.prepare(`INSERT INTO gl_entries
+  const insEntry = db.prepare(`INSERT INTO gl_entries
     (posting_date, account_id, debit, credit, voucher_type, voucher_no, party, against, remarks)
     VALUES (@posting_date, @account_id, @debit, @credit, @voucher_type, @voucher_no, @party, @against, @remarks)`);
 
-  const post = (voucher_type, voucher_no, posting_date, lines, party = null, remarks = null) => {
+  const post = async (voucher_type, voucher_no, posting_date, lines, party = null, remarks = null) => {
     for (const ln of lines) {
       if ((ln.debit || 0) === 0 && (ln.credit || 0) === 0) continue;
       insEntry.run({
@@ -47,7 +47,7 @@ async function rebuildLedger() {
 
   const result = { sales: 0, purchases: 0, expenses: 0, payments: 0, openings: 0 };
 
-  db.transaction(() => {
+  db.transaction(async () => {
     await db.prepare("DELETE FROM gl_entries WHERE voucher_type != 'Journal Entry'").run();
 
     // ── SALES ──
@@ -214,7 +214,7 @@ async function buildTree(rootTypes, balMap) {
   const byParent = {};
   accounts.forEach(a => { (byParent[a.parent_id] = byParent[a.parent_id] || []).push(a); });
 
-  const build = (a) => {
+  const build = async (a) => {
     const node = {
       id: a.id, code: a.code, name: a.name, name_ar: a.name_ar,
       root_type: a.root_type, is_group: !!a.is_group, account_type: a.account_type,

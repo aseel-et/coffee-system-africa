@@ -19,8 +19,8 @@ router.get('/', authenticateToken, async (req, res) => {
 router.put('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const settings = req.body;
-    const upsert = await db.prepare('INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)');
-    const updateMany = await db.transaction((settingsObj) => {
+    const upsert = db.prepare('INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)');
+    const updateMany = db.transaction(async (settingsObj) => {
       for (const [key, value] of Object.entries(settingsObj)) {
         upsert.run(key, String(value));
       }
@@ -61,7 +61,7 @@ router.post('/factory-reset', authenticateToken, requireAdmin, async (req, res) 
       'categories',
     ];
 
-    await db.transaction(() => {
+    db.transaction(async () => {
       for (const table of FACTORY_RESET_TABLES) {
         try {
           await db.prepare(`DELETE FROM ${table}`).run();

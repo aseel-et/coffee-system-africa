@@ -82,7 +82,7 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
       enrichedItems.push({ ...item, product, total: itemTotal });
     }
 
-    const createPurchase = await db.transaction(() => {
+    const createPurchase = db.transaction(async () => {
       const purchaseResult = await db.prepare(`
         INSERT INTO purchases (invoice_number, supplier_name, purchase_date, total_amount, notes, created_by)
         VALUES (?, ?, ?, ?, ?, ?)
@@ -99,7 +99,7 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
         // Increase stock
         const before = item.product.current_stock;
         const after = before + parseFloat(item.quantity);
-        await db.prepare('UPDATE products SET current_stock = ?, cost_price = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+        db.prepare('UPDATE products SET current_stock = ?, cost_price = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
           .run(after, parseFloat(item.unit_cost), item.product.id);
         
         await db.prepare(`
@@ -151,7 +151,7 @@ router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
       enrichedItems.push({ ...item, product, total: itemTotal });
     }
 
-    await db.transaction(() => {
+    db.transaction(async () => {
       // 1. Revert old items stock
       const oldItems = await db.prepare('SELECT * FROM purchase_items WHERE purchase_id = ?').all(purchaseId);
       for (const oldItem of oldItems) {
@@ -188,7 +188,7 @@ router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
         const before = freshProduct ? freshProduct.current_stock : 0;
         const after = before + parseFloat(item.quantity);
 
-        await db.prepare('UPDATE products SET current_stock = ?, cost_price = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+        db.prepare('UPDATE products SET current_stock = ?, cost_price = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
           .run(after, parseFloat(item.unit_cost), item.product.id);
         
         await db.prepare(`
@@ -217,7 +217,7 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
       return res.status(404).json({ success: false, message: 'فاتورة الشراء غير موجودة' });
     }
 
-    await db.transaction(() => {
+    db.transaction(async () => {
       const items = await db.prepare('SELECT * FROM purchase_items WHERE purchase_id = ?').all(purchaseId);
       
       for (const item of items) {

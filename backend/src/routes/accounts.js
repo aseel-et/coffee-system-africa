@@ -9,7 +9,7 @@ router.get('/summary', authenticateToken, requireAdmin, async (req, res) => {
     const { from_date, to_date } = req.query;
 
     // Helper: run a query with optional date params
-    const q = (sql, dateField, extraParams = []) => {
+    const q = async (sql, dateField, extraParams = []) => {
       let query = sql;
       const params = [...extraParams];
       if (from_date) { query += ` AND ${dateField} >= ?`; params.push(from_date); }
@@ -19,22 +19,22 @@ router.get('/summary', authenticateToken, requireAdmin, async (req, res) => {
 
     // === 1. CASH BALANCE ===
     const { query: cq1, params: cp1 } = q(`SELECT COALESCE(SUM(cash_amount),0) as total FROM sales WHERE status='completed'`, 'DATE(created_at)');
-    const cashFromSales = await db.prepare(cq1).get(...cp1).total;
+    const cashFromSales = await (await db.prepare(cq1).get(...cp1))?.total;
 
     const { query: cq2, params: cp2 } = q(`SELECT COALESCE(SUM(amount),0) as total FROM expenses WHERE (payment_method='cash' OR payment_method IS NULL OR payment_method='')`, 'expense_date');
-    const cashPaidExpenses = await db.prepare(cq2).get(...cp2).total;
+    const cashPaidExpenses = await (await db.prepare(cq2).get(...cp2))?.total;
 
     const { query: cq3, params: cp3 } = q(`SELECT COALESCE(SUM(total_amount),0) as total FROM purchases WHERE 1=1`, 'purchase_date');
-    const cashPaidPurchases = await db.prepare(cq3).get(...cp3).total;
+    const cashPaidPurchases = await (await db.prepare(cq3).get(...cp3))?.total;
 
     const cashBalance = cashFromSales - cashPaidExpenses - cashPaidPurchases;
 
     // === 2. CARD BALANCE ===
     const { query: cardQ1, params: cardP1 } = q(`SELECT COALESCE(SUM(card_amount),0) as total FROM sales WHERE status='completed'`, 'DATE(created_at)');
-    const cardFromSales = await db.prepare(cardQ1).get(...cardP1).total;
+    const cardFromSales = await (await db.prepare(cardQ1).get(...cardP1))?.total;
 
     const { query: cardQ2, params: cardP2 } = q(`SELECT COALESCE(SUM(amount),0) as total FROM expenses WHERE payment_method='card'`, 'expense_date');
-    const cardPaidExpenses = await db.prepare(cardQ2).get(...cardP2).total;
+    const cardPaidExpenses = await (await db.prepare(cardQ2).get(...cardP2))?.total;
 
     const cardBalance = cardFromSales - cardPaidExpenses;
 
@@ -43,7 +43,7 @@ router.get('/summary', authenticateToken, requireAdmin, async (req, res) => {
     const totalSalesPeriod = await db.prepare(saleQ).get(...saleP);
 
     const { query: debtQ, params: debtP } = q(`SELECT COALESCE(SUM(debt_amount),0) as total FROM sales WHERE status='completed' AND debt_amount>0`, 'DATE(created_at)');
-    const debtSalesPeriod = await db.prepare(debtQ).get(...debtP).total;
+    const debtSalesPeriod = await (await db.prepare(debtQ).get(...debtP))?.total;
 
     // === 4. PERIOD EXPENSES SUMMARY ===
     const { query: expQ, params: expP } = q(`SELECT COALESCE(SUM(amount),0) as total, COUNT(*) as count FROM expenses WHERE 1=1`, 'expense_date');

@@ -35,7 +35,7 @@ const requireAdmin = async (req, res, next) => {
   next();
 };
 
-const requireRole = (...roles) => {
+const requireRole = async (...roles) => {
   return async (req, res, next) => {
     if (!roles.includes(req.user.role)) {
       return res.status(403).json({ success: false, message: 'ليس لديك صلاحية للقيام بهذا الإجراء' });

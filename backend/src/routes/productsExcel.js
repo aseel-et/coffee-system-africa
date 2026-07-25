@@ -28,12 +28,12 @@ const COLUMNS = [
 const HEADER_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF8B5E34' } };
 const HEADER_FONT = { bold: true, color: { argb: 'FFFFFFFF' }, size: 12 };
 
-function getCategories() {
+async function getCategories() {
   return await db.prepare('SELECT id, name, name_ar FROM categories WHERE is_active = 1 ORDER BY name').all();
 }
 
 // Add a hidden helper sheet holding dropdown lists, return its name.
-function addListsSheet(wb, categories) {
+async function addListsSheet(wb, categories) {
   const ws = wb.addWorksheet('lists', { state: 'veryHidden' });
   categories.forEach((c, i) => { ws.getCell(`A${i + 1}`).value = c.name; });
   ws.getCell('B1').value = TYPE_LABELS.non_stock;
@@ -43,7 +43,7 @@ function addListsSheet(wb, categories) {
   return { catRange: `lists!$A$1:$A$${Math.max(categories.length, 1)}`, typeRange: 'lists!$B$1:$B$2', yesnoRange: 'lists!$C$1:$C$2' };
 }
 
-function styleHeader(ws) {
+async function styleHeader(ws) {
   const row = ws.getRow(1);
   COLUMNS.forEach((col, i) => {
     const cell = row.getCell(i + 1);
@@ -60,7 +60,7 @@ function styleHeader(ws) {
 }
 
 // Apply per-column number formats + dropdown validations to a range of data rows.
-function applyColumnRules(ws, ranges, firstRow, lastRow) {
+async function applyColumnRules(ws, ranges, firstRow, lastRow) {
   COLUMNS.forEach((col, idx) => {
     const c = idx + 1;
     for (let r = firstRow; r <= lastRow; r++) {
@@ -80,7 +80,7 @@ function applyColumnRules(ws, ranges, firstRow, lastRow) {
   });
 }
 
-function rowValuesFor(product) {
+async function rowValuesFor(product) {
   return COLUMNS.map(col => {
     switch (col.key) {
       case 'product_type': return TYPE_LABELS[product.product_type] || TYPE_LABELS.non_stock;
@@ -91,7 +91,7 @@ function rowValuesFor(product) {
   });
 }
 
-function buildInstructionsSheet(wb) {
+async function buildInstructionsSheet(wb) {
   const ws = wb.addWorksheet('تعليمات');
   ws.views = [{ rightToLeft: true }];
   ws.columns = [{ width: 24 }, { width: 16 }, { width: 60 }];
@@ -212,34 +212,34 @@ router.post('/import', authenticateToken, requireAdmin, async (req, res) => {
     const categories = await db.prepare('SELECT id, name, name_ar FROM categories').all();
     const catMap = new Map();
     categories.forEach(c => { catMap.set((c.name || '').trim(), c.id); if (c.name_ar) catMap.set((c.name_ar || '').trim(), c.id); });
-    const findBySku = await db.prepare('SELECT id, product_type FROM products WHERE sku = ? LIMIT 1');
-    const findByName = await db.prepare('SELECT id, product_type FROM products WHERE name = ? LIMIT 1');
+    const findBySku = db.prepare('SELECT id, product_type FROM products WHERE sku = ? LIMIT 1');
+    const findByName = db.prepare('SELECT id, product_type FROM products WHERE name = ? LIMIT 1');
 
-    const cellStr = (row, key) => {
+    const cellStr = async (row, key) => {
       if (colIndex[key] === undefined) return '';
       let v = row.getCell(colIndex[key]).value;
       if (v && typeof v === 'object') v = v.text || v.result || v.richText?.map(t => t.text).join('') || '';
       return String(v ?? '').trim();
     };
-    const cellNum = (row, key) => {
+    const cellNum = async (row, key) => {
       const s = cellStr(row, key).replace(/,/g, '');
       const n = parseFloat(s);
       return isNaN(n) ? null : n;
     };
-    const parseYesNo = (s, def) => {
+    const parseYesNo = async (s, def) => {
       const t = (s || '').trim();
       if (t === YES || t === 'true' || t === '1' || t.toLowerCase() === 'yes') return 1;
       if (t === NO || t === 'false' || t === '0' || t.toLowerCase() === 'no') return 0;
       return def;
     };
 
-    const insert = await db.prepare(`
+    const insert = db.prepare(`
       INSERT INTO products (name, name_ar, sku, category_id, selling_price, cost_price, product_type,
         is_active, show_in_pos, current_stock, min_stock_alert, unit)
       VALUES (@name, @name_ar, @sku, @category_id, @selling_price, @cost_price, @product_type,
         @is_active, @show_in_pos, @current_stock, @min_stock_alert, @unit)
     `);
-    const update = await db.prepare(`
+    const update = db.prepare(`
       UPDATE products SET name=@name, name_ar=@name_ar, sku=@sku, category_id=@category_id,
         selling_price=@selling_price, cost_price=@cost_price, product_type=@product_type,
         is_active=@is_active, show_in_pos=@show_in_pos, min_stock_alert=@min_stock_alert,
@@ -249,7 +249,7 @@ router.post('/import', authenticateToken, requireAdmin, async (req, res) => {
 
     const result = { created: 0, updated: 0, skipped: 0, errors: [] };
 
-    const runImport = await db.transaction(() => {
+    const runImport = db.transaction(async () => {
       ws.eachRow((row, rowNumber) => {
         if (rowNumber === 1) return; // header
         const name = cellStr(row, 'name');
@@ -297,7 +297,7 @@ router.post('/import', authenticateToken, requireAdmin, async (req, res) => {
         } else {
           const info = insert.run(record);
           if (record.product_type === 'stock_tracked' && record.current_stock > 0) {
-            await db.prepare(`INSERT INTO stock_movements (product_id, movement_type, quantity, quantity_before, quantity_after, reason, user_id)
+            db.prepare(`INSERT INTO stock_movements (product_id, movement_type, quantity, quantity_before, quantity_after, reason, user_id)
                         VALUES (?, 'adjustment_in', ?, 0, ?, 'استيراد من Excel', ?)`)
               .run(info.lastInsertRowid, record.current_stock, record.current_stock, req.user.id);
           }

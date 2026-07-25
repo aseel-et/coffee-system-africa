@@ -121,7 +121,7 @@ router.post('/:id/transactions', authenticateToken, requireAdmin, async (req, re
     else if (type === 'adjustment') after = parseFloat(amount); // Overwrite if adjustment? Or maybe relative? Let's say relative for consistency.
     else return res.status(400).json({ success: false, message: 'نوع المعاملة غير صالح' });
 
-    const updateCustomerBalance = await db.transaction(() => {
+    const updateCustomerBalance = db.transaction(async () => {
       await db.prepare('UPDATE customers SET balance = ? WHERE id = ?').run(after, customerId);
       await db.prepare(`
         INSERT INTO customer_transactions (customer_id, transaction_type, amount, balance_before, balance_after, notes, user_id)
@@ -155,7 +155,7 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
       });
     }
 
-    await db.transaction(() => {
+    db.transaction(async () => {
       // Clear link from sales instead of deleting sales
       await db.prepare('UPDATE sales SET customer_id = NULL WHERE customer_id = ?').run(customerId);
       // Delete transactions
