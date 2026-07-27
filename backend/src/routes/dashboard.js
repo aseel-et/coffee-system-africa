@@ -4,7 +4,7 @@ const db = require('../database/connection');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 
 // GET /api/dashboard - Dashboard summary
-router.get('/', authenticateToken, requireAdmin, (req, res) => {
+router.get('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { from_date, to_date } = req.query;
     const today = new Date().toISOString().split('T')[0];
@@ -12,7 +12,7 @@ router.get('/', authenticateToken, requireAdmin, (req, res) => {
     const end = to_date || today;
 
     // Total sales
-    const salesSummary = db.prepare(`
+    const salesSummary = await db.prepare(`
       SELECT 
         COUNT(*) as total_orders,
         COALESCE(SUM(total), 0) as total_sales,
@@ -23,7 +23,7 @@ router.get('/', authenticateToken, requireAdmin, (req, res) => {
     `).get(start, end);
 
     // Customer balances
-    const customerSummary = db.prepare(`
+    const customerSummary = await db.prepare(`
       SELECT 
         COALESCE(SUM(CASE WHEN balance < 0 THEN ABS(balance) ELSE 0 END), 0) as total_debts,
         COALESCE(SUM(CASE WHEN balance > 0 THEN balance ELSE 0 END), 0) as total_credits
@@ -31,7 +31,7 @@ router.get('/', authenticateToken, requireAdmin, (req, res) => {
     `).get();
 
     // Total expenses
-    const expensesSummary = db.prepare(`
+    const expensesSummary = await db.prepare(`
       SELECT 
         COALESCE(SUM(amount), 0) as total_expenses,
         COALESCE(SUM(CASE WHEN description LIKE '%عامل%' OR description LIKE '%عمال%' OR description LIKE '%يومية%' OR description LIKE '%راتب%' THEN amount ELSE 0 END), 0) as worker_salaries
@@ -39,23 +39,23 @@ router.get('/', authenticateToken, requireAdmin, (req, res) => {
     `).get(start, end);
 
     // Total purchases
-    const purchasesSummary = db.prepare(`
+    const purchasesSummary = await db.prepare(`
       SELECT COALESCE(SUM(total_amount), 0) as total_purchases
       FROM purchases WHERE purchase_date >= ? AND purchase_date <= ? AND status = 'received'
     `).get(start, end);
 
     // Estimated profit = Sales - Cost of goods sold - Expenses
-    const cogsResult = db.prepare(`
+    const cogsResult = await db.prepare(`
       SELECT COALESCE(SUM(si.cost_price * si.quantity), 0) as total_cogs
       FROM sale_items si
       JOIN sales s ON s.id = si.sale_id
       WHERE s.status = 'completed' AND DATE(s.created_at) >= ? AND DATE(s.created_at) <= ?
     `).get(start, end);
 
-    const estimatedProfit = salesSummary.total_sales - cogsResult.total_cogs - expensesSummary.total_expenses;
+    const estimatedProfit = (salesSummary?.total_sales || 0) - (cogsResult?.total_cogs || 0) - (expensesSummary?.total_expenses || 0);
 
     // Employee performance
-    const employeePerformance = db.prepare(`
+    const employeePerformance = await db.prepare(`
       SELECT u.id, u.full_name, u.username,
         COUNT(s.id) as total_orders,
         COALESCE(SUM(s.total), 0) as total_sales,
@@ -68,7 +68,7 @@ router.get('/', authenticateToken, requireAdmin, (req, res) => {
     `).all(start, end);
 
     // Top products
-    const topProducts = db.prepare(`
+    const topProducts = await db.prepare(`
       SELECT p.name, p.name_ar, 
         SUM(si.quantity) as total_qty,
         SUM(si.total) as total_revenue,
@@ -81,7 +81,7 @@ router.get('/', authenticateToken, requireAdmin, (req, res) => {
     `).all(start, end);
 
     // Sales by category
-    const salesByCategory = db.prepare(`
+    const salesByCategory = await db.prepare(`
       SELECT c.name, c.color,
         SUM(si.total) as total_revenue,
         SUM(si.quantity) as total_qty
@@ -94,14 +94,14 @@ router.get('/', authenticateToken, requireAdmin, (req, res) => {
     `).all(start, end);
 
     // Sales by payment method
-    const salesByPayment = db.prepare(`
+    const salesByPayment = await db.prepare(`
       SELECT payment_method, COUNT(*) as count, COALESCE(SUM(total), 0) as total
       FROM sales WHERE status = 'completed' AND DATE(created_at) >= ? AND DATE(created_at) <= ?
       GROUP BY payment_method
     `).all(start, end);
 
     // Daily sales (for chart - last 7 or 30 days)
-    const dailySales = db.prepare(`
+    const dailySales = await db.prepare(`
       SELECT DATE(created_at) as date, 
         COUNT(*) as orders, 
         COALESCE(SUM(total), 0) as sales
@@ -110,14 +110,14 @@ router.get('/', authenticateToken, requireAdmin, (req, res) => {
     `).all(start, end);
 
     // Recent sales
-    const recentSales = db.prepare(`
+    const recentSales = await db.prepare(`
       SELECT s.id, s.invoice_number, s.total, s.payment_method, s.created_at, u.full_name as cashier_name
       FROM sales s LEFT JOIN users u ON u.id = s.cashier_id
       WHERE s.status = 'completed' ORDER BY s.created_at DESC LIMIT 10
     `).all();
 
     // Stock alerts
-    const stockAlerts = db.prepare(`
+    const stockAlerts = await db.prepare(`
       SELECT id, name, current_stock, min_stock_alert, unit
       FROM products WHERE product_type = 'stock_tracked' AND is_active = 1 
         AND current_stock <= CASE WHEN min_stock_alert > 0 THEN min_stock_alert ELSE 5 END
@@ -125,7 +125,7 @@ router.get('/', authenticateToken, requireAdmin, (req, res) => {
     `).all();
 
     // Expenses by category (for chart)
-    const expensesByCategory = db.prepare(`
+    const expensesByCategory = await db.prepare(`
       SELECT ec.name, ec.color, COALESCE(SUM(e.amount), 0) as total
       FROM expenses e LEFT JOIN expense_categories ec ON ec.id = e.expense_category_id
       WHERE e.expense_date >= ? AND e.expense_date <= ?
